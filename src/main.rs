@@ -1,25 +1,47 @@
+use iced::widget::operation::snap_to;
+use iced::widget::scrollable::RelativeOffset;
+use iced::widget::Id;
 use iced::{
-    Element, Length, Settings, Theme, Task,
-    widget::{column, container, row, scrollable, text, text_input, Space},
+    widget::{column, container, row, scrollable, text, text_input},
+    Element, Length, Settings, Task, Theme,
 };
+use std::sync::LazyLock;
 
-fn theme(_: &App) -> Theme { Theme::Dark }
+use async_stream::stream;
+use tokio_stream::StreamExt;
+
+use ollama_rs::generation::completion::request::GenerationRequest;
+use ollama_rs::Ollama;
+
+static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
+
+fn theme(_: &App) -> Theme {
+    Theme::Dark
+}
 
 pub fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
-        .title("Iced 0.14 transcript")
+        .title("Iced 0.14 + Ollama streaming")
         .theme(theme)
         .settings(Settings::default())
         .run()
 }
 
 #[derive(Debug, Clone)]
-enum Role { User, Assistant, System }
+enum Role {
+    User,
+    Assistant,
+    System,
+}
 
 #[derive(Debug, Clone)]
-struct Line { role: Role, content: String }
+struct Line {
+    role: Role,
+    content: String,
+}
 
 struct App {
+    model: String,
     draft: String,
     lines: Vec<Line>,
     waiting: bool,
@@ -29,61 +51,85 @@ struct App {
 enum Message {
     DraftChanged(String),
     Submit,
-    LlmOk(String),
+    LlmChunk(String),
+    LlmDone,
     LlmErr(String),
 }
 
 impl App {
     fn new() -> Self {
         Self {
+            model: "llama3.2:latest".into(),
             draft: String::new(),
-            lines: vec![Line { role: Role::System, content: "Ready.".into() }],
+            lines: vec![Line {
+                role: Role::System,
+                content: "Ready.".into(),
+            }],
             waiting: false,
         }
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
-            Message::DraftChanged(s) => { self.draft = s; Task::none() }
+            Message::DraftChanged(s) => {
+                self.draft = s;
+                Task::none()
+            }
 
             Message::Submit => {
-                if self.waiting { return Task::none(); }
+                if self.waiting {
+                    return Task::none();
+                }
                 let prompt = self.draft.trim().to_string();
-                if prompt.is_empty() { return Task::none(); }
+                if prompt.is_empty() {
+                    return Task::none();
+                }
 
                 self.draft.clear();
                 self.waiting = true;
 
-                self.lines.push(Line { role: Role::User, content: prompt.clone() });
-                self.lines.push(Line { role: Role::Assistant, content: "…".into() });
+                self.lines.push(Line {
+                    role: Role::User,
+                    content: prompt.clone(),
+                });
+                self.lines.push(Line {
+                    role: Role::Assistant,
+                    content: String::new(),
+                });
 
-                Task::perform(fake_llm_call(prompt), |r| match r {
-                    Ok(s) => Message::LlmOk(s),
-                    Err(e) => Message::LlmErr(e),
-                })
+                Task::batch([
+                    Task::stream(ollama_stream(self.model.clone(), prompt)),
+                    // scrollable::snap_to(LOG.clone(), RelativeOffset::END),
+                    snap_to(LOG.clone(), RelativeOffset::END),
+                ])
             }
 
-            Message::LlmOk(reply) => {
+            Message::LlmChunk(chunk) => {
+                if let Some(last) = self.lines.last_mut() {
+                    if matches!(last.role, Role::Assistant) {
+                        last.content.push_str(&chunk);
+                    }
+                }
+                snap_to(LOG.clone(), RelativeOffset::END)
+            }
+
+            Message::LlmDone => {
+                self.waiting = false;
+                snap_to(LOG.clone(), RelativeOffset::END)
+            }
+
+            Message::LlmErr(e) => {
                 self.waiting = false;
                 if let Some(last) = self.lines.last_mut() {
-                    if matches!(last.role, Role::Assistant) && last.content == "…" {
-                        last.content = reply;
+                    if matches!(last.role, Role::Assistant) && last.content.is_empty() {
+                        last.content = format!("(error) {e}");
                         return Task::none();
                     }
                 }
-                self.lines.push(Line { role: Role::Assistant, content: reply });
-                Task::none()
-            }
-
-            Message::LlmErr(err) => {
-                self.waiting = false;
-                if let Some(last) = self.lines.last_mut() {
-                    if matches!(last.role, Role::Assistant) && last.content == "…" {
-                        last.content = format!("(error) {err}");
-                        return Task::none();
-                    }
-                }
-                self.lines.push(Line { role: Role::System, content: format!("(error) {err}") });
+                self.lines.push(Line {
+                    role: Role::System,
+                    content: format!("(error) {e}"),
+                });
                 Task::none()
             }
         }
@@ -101,7 +147,8 @@ impl App {
 
         let top = container(
             scrollable(container(transcript).padding(12).width(Length::Fill))
-                .height(Length::Fill)
+                .id(LOG.clone())
+                .height(Length::Fill),
         )
         .width(Length::Fill)
         .height(Length::Fill);
@@ -113,20 +160,49 @@ impl App {
             .size(16)
             .width(Length::Fill);
 
-        let bottom = container(
-            row![
-                input,
-                Space::new().width(Length::Fixed(8.0)),
-                text(if self.waiting { "thinking…" } else { "" }),
-            ]
-        )
-        .width(Length::Fill)
-        .padding(8);
+        let bottom =
+            container(row![input, text(if self.waiting { "  thinking…" } else { "" })].spacing(8))
+                .width(Length::Fill)
+                .padding(8);
 
-        column![top, bottom].width(Length::Fill).height(Length::Fill).into()
+        column![top, bottom]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 }
 
-async fn fake_llm_call(prompt: String) -> Result<String, String> {
-    Ok(format!("(stub) You said: {prompt}"))
+fn ollama_stream(
+    model: String,
+    prompt: String,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+        let ollama = Ollama::default();
+
+        let req = GenerationRequest::new(model, prompt);
+
+        let mut s = match ollama.generate_stream(req).await {
+            Ok(s) => s,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        while let Some(item) = s.next().await {
+            match item {
+                Ok(responses) => {
+                    for r in responses {
+                        if !r.response.is_empty() {
+                            yield Message::LlmChunk(r.response);
+                        }
+                    }
+                }
+                Err(e) => {
+                    yield Message::LlmErr(e.to_string());
+                    yield Message::LlmDone;
+                    return;
+                }
+            }
+        }
+
+        yield Message::LlmDone;
+    }
 }
