@@ -1,14 +1,16 @@
 use iced::{
-    Element, Length, Settings, Theme,
+    Element, Length, Settings, Theme, Task,
     widget::{column, container, row, scrollable, text, text_input, Space},
-    Task,
 };
+
+fn theme(_: &App) -> Theme { Theme::Dark }
 
 pub fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
         .title("Iced 0.14 transcript")
-        .theme(|_| Theme::Dark)
-        .run_with(Settings::default())
+        .theme(theme)
+        .settings(Settings::default())
+        .run()
 }
 
 #[derive(Debug, Clone)]
@@ -112,7 +114,11 @@ impl App {
             .width(Length::Fill);
 
         let bottom = container(
-            row![input, Space::width(Length::Fixed(8.0)), text(if self.waiting { "thinking…" } else { "" })]
+            row![
+                input,
+                Space::new().width(Length::Fixed(8.0)),
+                text(if self.waiting { "thinking…" } else { "" }),
+            ]
         )
         .width(Length::Fill)
         .padding(8);
@@ -124,4 +130,3 @@ impl App {
 async fn fake_llm_call(prompt: String) -> Result<String, String> {
     Ok(format!("(stub) You said: {prompt}"))
 }
-
