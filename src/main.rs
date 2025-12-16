@@ -1,30 +1,46 @@
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
+
 use iced::{
-    widget::{column, container, row, scrollable, text, text_input},
+    widget::{button, column, container, pick_list, row, scrollable, slider, text, text_input},
     Element, Length, Settings, Task, Theme,
 };
-use std::sync::LazyLock;
+use std::{
+    fmt,
+    sync::{Arc, LazyLock, Mutex},
+};
 
 use async_stream::stream;
 use tokio_stream::StreamExt;
 
-use ollama_rs::generation::completion::request::GenerationRequest;
-use ollama_rs::Ollama;
+use ollama_rs::generation::chat::MessageRole;
+use ollama_rs::{
+    generation::chat::{request::ChatMessageRequest, ChatMessage},
+    generation::completion::request::GenerationRequest,
+    models::ModelOptions,
+    Ollama,
+};
 
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
+static MODES: [Mode; 2] = [Mode::Completion, Mode::Chat];
 
 fn theme(_: &App) -> Theme {
     Theme::Dark
 }
 
-pub fn main() -> iced::Result {
-    iced::application(App::new, App::update, App::view)
-        .title("Iced 0.14 + Ollama streaming")
-        .theme(theme)
-        .settings(Settings::default())
-        .run()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Completion,
+    Chat,
+}
+impl fmt::Display for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Mode::Completion => write!(f, "Completion"),
+            Mode::Chat => write!(f, "Chat (history)"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -33,39 +49,75 @@ enum Role {
     Assistant,
     System,
 }
-
 #[derive(Debug, Clone)]
 struct Line {
     role: Role,
     content: String,
 }
 
-struct App {
-    model: String,
-    draft: String,
-    lines: Vec<Line>,
-    waiting: bool,
-}
-
 #[derive(Debug, Clone)]
 enum Message {
     DraftChanged(String),
     Submit,
+    ModeChanged(Mode),
+
+    TemperatureChanged(f32),
+    NumPredictChanged(i32),
+    MaxTurnsChanged(u16),
+
+    ResetParams,
+    ClearAll,
+
     LlmChunk(String),
     LlmDone,
     LlmErr(String),
 }
 
+struct App {
+    model: String,
+    mode: Mode,
+
+    temperature: f32,
+    num_predict: i32,
+    max_turns: u16,
+
+    draft: String,
+    lines: Vec<Line>,
+    waiting: bool,
+
+    history: Arc<Mutex<Vec<ChatMessage>>>,
+}
+
+pub fn main() -> iced::Result {
+    iced::application(App::new, App::update, App::view)
+        .title("Iced 0.14 + Ollama (stream + history)")
+        .theme(theme)
+        .settings(Settings::default())
+        .run()
+}
+
 impl App {
     fn new() -> Self {
+        let history = Arc::new(Mutex::new(vec![ChatMessage::system(
+            "You are a helpful assistant.".to_string(),
+        )]));
+
         Self {
             model: "llama3.2:latest".into(),
+            mode: Mode::Chat,
+
+            temperature: 0.7,
+            num_predict: 256,
+            max_turns: 20,
+
             draft: String::new(),
             lines: vec![Line {
                 role: Role::System,
                 content: "Ready.".into(),
             }],
             waiting: false,
+
+            history,
         }
     }
 
@@ -73,6 +125,46 @@ impl App {
         match msg {
             Message::DraftChanged(s) => {
                 self.draft = s;
+                Task::none()
+            }
+
+            Message::ModeChanged(m) => {
+                self.mode = m;
+                Task::none()
+            }
+
+            Message::TemperatureChanged(t) => {
+                self.temperature = t;
+                Task::none()
+            }
+
+            Message::NumPredictChanged(n) => {
+                self.num_predict = n;
+                Task::none()
+            }
+
+            Message::MaxTurnsChanged(n) => {
+                self.max_turns = n;
+                Task::none()
+            }
+
+            Message::ResetParams => {
+                self.temperature = 0.7;
+                self.num_predict = 256;
+                self.max_turns = 20;
+                Task::none()
+            }
+
+            Message::ClearAll => {
+                self.draft.clear();
+                self.waiting = false;
+                self.lines = vec![Line {
+                    role: Role::System,
+                    content: "Cleared.".into(),
+                }];
+                *self.history.lock().unwrap() = vec![ChatMessage::system(
+                    "You are a helpful assistant.".to_string(),
+                )];
                 Task::none()
             }
 
@@ -97,11 +189,19 @@ impl App {
                     content: String::new(),
                 });
 
-                Task::batch([
-                    Task::stream(ollama_stream(self.model.clone(), prompt)),
-                    // scrollable::snap_to(LOG.clone(), RelativeOffset::END),
-                    snap_to(LOG.clone(), RelativeOffset::END),
-                ])
+                let model = self.model.clone();
+                let opts = ModelOptions::default()
+                    .temperature(self.temperature)
+                    .num_predict(self.num_predict);
+
+                let task = match self.mode {
+                    Mode::Completion => Task::stream(stream_completion(model, prompt, opts)),
+                    Mode::Chat => {
+                        Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
+                    }
+                };
+
+                Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
             }
 
             Message::LlmChunk(chunk) => {
@@ -115,6 +215,14 @@ impl App {
 
             Message::LlmDone => {
                 self.waiting = false;
+
+                if self.mode == Mode::Chat {
+                    trim_history_by_turns(
+                        &mut self.history.lock().unwrap(),
+                        self.max_turns as usize,
+                    );
+                }
+
                 snap_to(LOG.clone(), RelativeOffset::END)
             }
 
@@ -153,6 +261,25 @@ impl App {
         .width(Length::Fill)
         .height(Length::Fill);
 
+        let _modes = [Mode::Completion, Mode::Chat];
+
+        let controls = row![
+            text("Mode:"),
+            pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
+            text(format!("Temp: {:.2}", self.temperature)),
+            slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
+                .width(Length::Fixed(180.0)),
+            text(format!("Max tokens: {}", self.num_predict)),
+            slider(1..=4096, self.num_predict, Message::NumPredictChanged)
+                .width(Length::Fixed(180.0)),
+            text(format!("Max turns: {}", self.max_turns)),
+            slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
+                .width(Length::Fixed(160.0)),
+            button("Reset").on_press(Message::ResetParams),
+            button("Clear").on_press(Message::ClearAll),
+        ]
+        .spacing(12);
+
         let input = text_input("Type and press Enter…", &self.draft)
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
@@ -160,10 +287,15 @@ impl App {
             .size(16)
             .width(Length::Fill);
 
-        let bottom =
-            container(row![input, text(if self.waiting { "  thinking…" } else { "" })].spacing(8))
-                .width(Length::Fill)
-                .padding(8);
+        let bottom = container(
+            column![
+                controls,
+                row![input, text(if self.waiting { "  thinking…" } else { "" })].spacing(8),
+            ]
+            .spacing(8),
+        )
+        .width(Length::Fill)
+        .padding(8);
 
         column![top, bottom]
             .width(Length::Fill)
@@ -172,14 +304,14 @@ impl App {
     }
 }
 
-fn ollama_stream(
+fn stream_completion(
     model: String,
     prompt: String,
+    opts: ModelOptions,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let ollama = Ollama::default();
-
-        let req = GenerationRequest::new(model, prompt);
+        let req = GenerationRequest::new(model, prompt).options(opts);
 
         let mut s = match ollama.generate_stream(req).await {
             Ok(s) => s,
@@ -188,21 +320,65 @@ fn ollama_stream(
 
         while let Some(item) = s.next().await {
             match item {
-                Ok(responses) => {
-                    for r in responses {
-                        if !r.response.is_empty() {
-                            yield Message::LlmChunk(r.response);
-                        }
-                    }
+                Ok(responses) => for r in responses { if !r.response.is_empty() { yield Message::LlmChunk(r.response); } }
+                Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            }
+        }
+        yield Message::LlmDone;
+    }
+}
+
+fn stream_chat(
+    model: String,
+    user_prompt: String,
+    opts: ModelOptions,
+    history: Arc<Mutex<Vec<ChatMessage>>>,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+        let ollama = Ollama::default();
+        let req = ChatMessageRequest::new(model, vec![ChatMessage::user(user_prompt)]).options(opts);
+
+        let mut s = match ollama.send_chat_messages_with_history_stream(history, req).await {
+            Ok(s) => s,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        while let Some(item) = s.next().await {
+            match item {
+                Ok(res) => {
+                    let chunk = res.message.content;
+                    if !chunk.is_empty() { yield Message::LlmChunk(chunk); }
                 }
-                Err(e) => {
-                    yield Message::LlmErr(e.to_string());
-                    yield Message::LlmDone;
-                    return;
-                }
+                Err(_) => { yield Message::LlmErr("Ollama stream error".into()); yield Message::LlmDone; return; }
             }
         }
 
         yield Message::LlmDone;
     }
+}
+
+fn trim_history_by_turns(history: &mut Vec<ChatMessage>, max_turns: usize) {
+    if max_turns == 0 {
+        return;
+    }
+
+    let (sys, rest) = if matches!(history.first(), Some(m) if matches!(m.role, MessageRole::System))
+    {
+        (Some(history[0].clone()), history[1..].to_vec())
+    } else {
+        (None, history.clone())
+    };
+
+    let keep = max_turns.saturating_mul(2);
+    let rest = if rest.len() > keep {
+        rest[rest.len() - keep..].to_vec()
+    } else {
+        rest
+    };
+
+    history.clear();
+    if let Some(s) = sys {
+        history.push(s);
+    }
+    history.extend(rest);
 }
