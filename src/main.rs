@@ -1,74 +1,125 @@
 use iced::{
-    executor,
-    widget::{column, container, row, scrollable, text, text_input},
-    Application, Element, Length, Settings, Theme,
+    executor, Application, Command, Element, Length, Settings, Theme,
+    widget::{column, container, row, scrollable, text, text_input, Space},
 };
-use std::process::Command;
 
 pub fn main() -> iced::Result {
-    EchoApp::run(Settings::default())
+    EchoChat::run(Settings::default())
 }
 
+#[derive(Debug, Clone)]
+enum Role { User, Assistant, System }
+
+#[derive(Debug, Clone)]
+struct Line { role: Role, content: String }
+
 #[derive(Default)]
-struct EchoApp {
-    input: String,
-    echoed: String,
+struct EchoChat {
+    draft: String,
+    lines: Vec<Line>,
+    waiting: bool,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
-    InputChanged(String),
+    DraftChanged(String),
     Submit,
+    OllamaResponse(String),
+    OllamaError(String),
 }
 
-impl Application for EchoApp {
+impl Application for EchoChat {
     type Executor = executor::Default;
     type Message = Message;
     type Theme = Theme;
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
-        (Self::default(), Command::none())
+        let mut s = Self::default();
+        s.lines.push(Line{ role: Role::System, content: "Ready.".into() });
+        (s, Command::none())
     }
 
-    fn title(&self) -> String {
-        "Iced 0.14 Two-Pane Echo".into()
-    }
+    fn title(&self) -> String { "Iced 0.14 Chat Transcript".into() }
 
-    fn update(&mut self, message: Message) -> Command<Message> {
-        match message {
-            Message::InputChanged(s) => {
-                self.input = s;
-                self.echoed = self.input.clone(); // live echo
+    fn update(&mut self, msg: Message) -> Command<Message> {
+        match msg {
+            Message::DraftChanged(s) => {
+                self.draft = s;
+                Command::none()
             }
             Message::Submit => {
-                self.echoed = self.input.clone();
-                self.input.clear();
+                let user_text = self.draft.trim().to_string();
+                if user_text.is_empty() || self.waiting { return Command::none(); }
+
+                self.draft.clear();
+                self.waiting = true;
+
+                self.lines.push(Line{ role: Role::User, content: user_text.clone() });
+                self.lines.push(Line{ role: Role::Assistant, content: "…".into() }); // placeholder
+
+                // Replace this stub with an ollama-rs call later
+                Command::perform(fake_llm_call(user_text), |r| match r {
+                    Ok(s) => Message::OllamaResponse(s),
+                    Err(e) => Message::OllamaError(e),
+                })
+            }
+            Message::OllamaResponse(reply) => {
+                self.waiting = false;
+                if let Some(last) = self.lines.last_mut() {
+                    if matches!(last.role, Role::Assistant) && last.content == "…" {
+                        last.content = reply;
+                        return Command::none();
+                    }
+                }
+                self.lines.push(Line{ role: Role::Assistant, content: reply });
+                Command::none()
+            }
+            Message::OllamaError(err) => {
+                self.waiting = false;
+                if let Some(last) = self.lines.last_mut() {
+                    if matches!(last.role, Role::Assistant) && last.content == "…" {
+                        last.content = format!("(error) {err}");
+                        return Command::none();
+                    }
+                }
+                self.lines.push(Line{ role: Role::System, content: format!("(error) {err}") });
+                Command::none()
             }
         }
-        Command::none()
     }
 
     fn view(&self) -> Element<Message> {
-        let top_pane = container(
-            scrollable(
-                container(text(&self.echoed).size(18))
-                    .padding(12)
-                    .width(Length::Fill),
+        let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
+            let prefix = match line.role {
+                Role::User => "You: ",
+                Role::Assistant => "Ollama: ",
+                Role::System => "",
+            };
+            col.push(text(format!("{prefix}{}", line.content)).size(16))
+        });
+
+        let top_pane =
+            container(
+                scrollable(container(transcript).padding(12).width(Length::Fill))
+                    .height(Length::Fill)
             )
-            .height(Length::Fill),
-        )
-        .width(Length::Fill)
-        .height(Length::Fill);
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        let input = text_input("Type and press Enter…", &self.draft)
+            .on_input(Message::DraftChanged)
+            .on_submit(Message::Submit)
+            .padding(10)
+            .size(16)
+            .width(Length::Fill);
 
         let bottom_pane = container(
-            row![text_input("Type here…", &self.input)
-                .on_input(Message::InputChanged)
-                .on_submit(Message::Submit)
-                .padding(10)
-                .size(16)
-                .width(Length::Fill)]
-            .spacing(8),
+            row![
+                input,
+                Space::with_width(Length::Fixed(8.0)),
+                text(if self.waiting { "thinking…" } else { "" }),
+            ]
         )
         .width(Length::Fill)
         .padding(8);
@@ -79,3 +130,8 @@ impl Application for EchoApp {
             .into()
     }
 }
+
+async fn fake_llm_call(prompt: String) -> Result<String, String> {
+    Ok(format!("(stubbed) You said: {prompt}"))
+}
+
