@@ -1,10 +1,14 @@
 use iced::{
-    executor, Application, Command, Element, Length, Settings, Theme,
+    Element, Length, Settings, Theme,
     widget::{column, container, row, scrollable, text, text_input, Space},
+    Task,
 };
 
 pub fn main() -> iced::Result {
-    EchoChat::run(Settings::default())
+    iced::application(App::new, App::update, App::view)
+        .title("Iced 0.14 transcript")
+        .theme(|_| Theme::Dark)
+        .run_with(Settings::default())
 }
 
 #[derive(Debug, Clone)]
@@ -13,8 +17,7 @@ enum Role { User, Assistant, System }
 #[derive(Debug, Clone)]
 struct Line { role: Role, content: String }
 
-#[derive(Default)]
-struct EchoChat {
+struct App {
     draft: String,
     lines: Vec<Line>,
     waiting: bool,
@@ -24,67 +27,62 @@ struct EchoChat {
 enum Message {
     DraftChanged(String),
     Submit,
-    OllamaResponse(String),
-    OllamaError(String),
+    LlmOk(String),
+    LlmErr(String),
 }
 
-impl Application for EchoChat {
-    type Executor = executor::Default;
-    type Message = Message;
-    type Theme = Theme;
-    type Flags = ();
-
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        let mut s = Self::default();
-        s.lines.push(Line{ role: Role::System, content: "Ready.".into() });
-        (s, Command::none())
+impl App {
+    fn new() -> Self {
+        Self {
+            draft: String::new(),
+            lines: vec![Line { role: Role::System, content: "Ready.".into() }],
+            waiting: false,
+        }
     }
 
-    fn title(&self) -> String { "Iced 0.14 Chat Transcript".into() }
-
-    fn update(&mut self, msg: Message) -> Command<Message> {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
-            Message::DraftChanged(s) => {
-                self.draft = s;
-                Command::none()
-            }
+            Message::DraftChanged(s) => { self.draft = s; Task::none() }
+
             Message::Submit => {
-                let user_text = self.draft.trim().to_string();
-                if user_text.is_empty() || self.waiting { return Command::none(); }
+                if self.waiting { return Task::none(); }
+                let prompt = self.draft.trim().to_string();
+                if prompt.is_empty() { return Task::none(); }
 
                 self.draft.clear();
                 self.waiting = true;
 
-                self.lines.push(Line{ role: Role::User, content: user_text.clone() });
-                self.lines.push(Line{ role: Role::Assistant, content: "…".into() }); // placeholder
+                self.lines.push(Line { role: Role::User, content: prompt.clone() });
+                self.lines.push(Line { role: Role::Assistant, content: "…".into() });
 
-                // Replace this stub with an ollama-rs call later
-                Command::perform(fake_llm_call(user_text), |r| match r {
-                    Ok(s) => Message::OllamaResponse(s),
-                    Err(e) => Message::OllamaError(e),
+                Task::perform(fake_llm_call(prompt), |r| match r {
+                    Ok(s) => Message::LlmOk(s),
+                    Err(e) => Message::LlmErr(e),
                 })
             }
-            Message::OllamaResponse(reply) => {
+
+            Message::LlmOk(reply) => {
                 self.waiting = false;
                 if let Some(last) = self.lines.last_mut() {
                     if matches!(last.role, Role::Assistant) && last.content == "…" {
                         last.content = reply;
-                        return Command::none();
+                        return Task::none();
                     }
                 }
-                self.lines.push(Line{ role: Role::Assistant, content: reply });
-                Command::none()
+                self.lines.push(Line { role: Role::Assistant, content: reply });
+                Task::none()
             }
-            Message::OllamaError(err) => {
+
+            Message::LlmErr(err) => {
                 self.waiting = false;
                 if let Some(last) = self.lines.last_mut() {
                     if matches!(last.role, Role::Assistant) && last.content == "…" {
                         last.content = format!("(error) {err}");
-                        return Command::none();
+                        return Task::none();
                     }
                 }
-                self.lines.push(Line{ role: Role::System, content: format!("(error) {err}") });
-                Command::none()
+                self.lines.push(Line { role: Role::System, content: format!("(error) {err}") });
+                Task::none()
             }
         }
     }
@@ -99,13 +97,12 @@ impl Application for EchoChat {
             col.push(text(format!("{prefix}{}", line.content)).size(16))
         });
 
-        let top_pane =
-            container(
-                scrollable(container(transcript).padding(12).width(Length::Fill))
-                    .height(Length::Fill)
-            )
-            .width(Length::Fill)
-            .height(Length::Fill);
+        let top = container(
+            scrollable(container(transcript).padding(12).width(Length::Fill))
+                .height(Length::Fill)
+        )
+        .width(Length::Fill)
+        .height(Length::Fill);
 
         let input = text_input("Type and press Enter…", &self.draft)
             .on_input(Message::DraftChanged)
@@ -114,24 +111,17 @@ impl Application for EchoChat {
             .size(16)
             .width(Length::Fill);
 
-        let bottom_pane = container(
-            row![
-                input,
-                Space::with_width(Length::Fixed(8.0)),
-                text(if self.waiting { "thinking…" } else { "" }),
-            ]
+        let bottom = container(
+            row![input, Space::width(Length::Fixed(8.0)), text(if self.waiting { "thinking…" } else { "" })]
         )
         .width(Length::Fill)
         .padding(8);
 
-        column![top_pane, bottom_pane]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        column![top, bottom].width(Length::Fill).height(Length::Fill).into()
     }
 }
 
 async fn fake_llm_call(prompt: String) -> Result<String, String> {
-    Ok(format!("(stubbed) You said: {prompt}"))
+    Ok(format!("(stub) You said: {prompt}"))
 }
 
