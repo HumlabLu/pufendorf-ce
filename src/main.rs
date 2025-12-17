@@ -83,7 +83,7 @@ struct App {
     num_predict: i32,
     max_turns: u16,
 
-    draft: String,
+    draft: String, // User input
     lines: Vec<Line>,
     waiting: bool,
 
@@ -109,7 +109,7 @@ impl App {
             mode: Mode::Chat,
 
             temperature: 0.7,
-            num_predict: 256,
+            num_predict: 512,
             max_turns: 20,
 
             draft: String::new(),
@@ -220,7 +220,7 @@ impl App {
                         if chunk.starts_with(&last.content) {
                             last.content = chunk;
                         } else {
-                            // last.content.push_str(&chunk);
+                            last.content.push_str(&chunk);
                         }
                     }
                 }
@@ -280,12 +280,14 @@ impl App {
         let controls = row![
             text("Mode:"),
             pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
-            text(format!("Temp: {:.2}", self.temperature)),
+            text(format!("Temp: {:.1}", self.temperature)),
             slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
-                .width(Length::Fixed(180.0)),
+                .width(Length::Fixed(180.0))
+                .step(0.1),
             text(format!("Max tokens: {}", self.num_predict)),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
-                .width(Length::Fixed(180.0)),
+                .width(Length::Fixed(180.0))
+                .step(12),
             text(format!("Max turns: {}", self.max_turns)),
             slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
                 .width(Length::Fixed(160.0)),
