@@ -22,6 +22,7 @@ use ollama_rs::{
     Ollama,
 };
 
+// LOG is the Id for the output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 static MODES: [Mode; 2] = [Mode::Completion, Mode::Chat];
 
@@ -73,6 +74,7 @@ enum Message {
     LlmErr(String),
 }
 
+// "Global" data for the app.
 struct App {
     model: String,
     mode: Mode,
@@ -90,7 +92,7 @@ struct App {
 
 pub fn main() -> iced::Result {
     iced::application(App::new, App::update, App::view)
-        .title("Iced 0.14 + Ollama (stream + history)")
+        .title("Speak with Pufendorf")
         .theme(theme)
         .settings(Settings::default())
         .run()
@@ -204,10 +206,22 @@ impl App {
                 Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
             }
 
-            Message::LlmChunk(chunk) => {
+            /*Message::LlmChunk(chunk) => {
                 if let Some(last) = self.lines.last_mut() {
                     if matches!(last.role, Role::Assistant) {
                         last.content.push_str(&chunk);
+                    }
+                }
+                snap_to(LOG.clone(), RelativeOffset::END)
+            }*/
+            Message::LlmChunk(chunk) => {
+                if let Some(last) = self.lines.last_mut() {
+                    if matches!(last.role, Role::Assistant) {
+                        if chunk.starts_with(&last.content) {
+                            last.content = chunk;
+                        } else {
+                            // last.content.push_str(&chunk);
+                        }
                     }
                 }
                 snap_to(LOG.clone(), RelativeOffset::END)
