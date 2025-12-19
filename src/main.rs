@@ -14,7 +14,9 @@ use std::{
 use async_stream::stream;
 use tokio_stream::StreamExt;
 
+// use async_stream::stream;
 use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
+// use futures_util::StreamExt;
 use ollama_rs::generation::chat::MessageRole;
 use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage},
@@ -22,13 +24,37 @@ use ollama_rs::{
     models::ModelOptions,
     Ollama,
 };
+use serde::Serialize;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
+#[derive(Clone, Serialize)]
+struct InputMsg<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Serialize)]
+struct ResponsesReq<'a> {
+    model: &'a str,
+    input: Vec<InputMsg<'a>>,
+    stream: bool,
+    temperature: f32,
+    max_output_tokens: i32,
+}
+
+#[derive(serde::Deserialize)]
+struct StreamEvent {
+    #[serde(rename = "type")]
+    ty: String,
+    delta: Option<String>,
+    error: Option<serde_json::Value>,
+}
+
 // LOG is the Id for the output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
-static MODES: [Mode; 2] = [Mode::Completion, Mode::Chat];
+static MODES: [Mode; 3] = [Mode::Completion, Mode::Chat, Mode::OpenAI];
 
 fn theme(_: &App) -> Theme {
     Theme::Dark
@@ -38,12 +64,14 @@ fn theme(_: &App) -> Theme {
 enum Mode {
     Completion,
     Chat,
+    OpenAI,
 }
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Mode::Completion => write!(f, "Completion"),
             Mode::Chat => write!(f, "Chat (history)"),
+            Mode::OpenAI => write!(f, "OpenAI"),
         }
     }
 }
@@ -98,26 +126,6 @@ struct App {
 }
 
 pub fn main() -> iced::Result {
-    /*
-    let file_path = Path::new("chatprompts.json");
-    // Read the entire content of the JSON file into a string
-    let content = fs::read_to_string(file_path).expect("no file");
-    // Print just to confirm file reading success
-    // println!("File Content:\n{}", content);
-    let data: Value = serde_json::from_str(&content).expect("data");
-    // println!("{}", &data);
-    let sysprompt = &data["system_prompt"]
-        .as_str()
-        .unwrap_or("You are Samuel Von Pufendorf.");
-    let mut sysprompt = sysprompt.to_string();
-    // dbg!(sysprompt);
-    if let Some(extras) = data["extra_info"].as_array() {
-        for extra in extras {
-            // println!("{}", extra);
-            sysprompt += extra.as_str().unwrap_or("");
-        }
-    }
-    */
     let corpus = [
         "The rabbit munched the orange carrot.",
         "The snake hugged the green lizard.",
@@ -263,6 +271,13 @@ impl App {
                     Mode::Chat => {
                         Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
                     }
+                    Mode::OpenAI => Task::none(),
+                    /*Task::stream(stream_chat_openai_responses(
+                        "gpt-5".to_string(),
+                        self.history.clone(),
+                        self.temperature,
+                        self.num_predict,
+                    ))*/
                 };
 
                 Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
@@ -323,7 +338,7 @@ impl App {
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
-                Role::Assistant => "Ollama: ",
+                Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
             col.push(text(format!("{prefix}{}", line.content)).size(16))
@@ -459,4 +474,84 @@ fn trim_history_by_turns(history: &mut Vec<ChatMessage>, max_turns: usize) {
         history.push(s);
     }
     history.extend(rest);
+}
+
+// The OpenAI interface.
+fn stream_chat_openai_responses(
+    model: String,
+    history: Vec<(String, String)>, // (role, content) with roles: "system"|"user"|"assistant"
+    temperature: f32,
+    max_output_tokens: i32,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+        let key = match std::env::var("OPENAI_API_KEY") {
+            Ok(k) if !k.is_empty() => k,
+            _ => { yield Message::LlmErr("OPENAI_API_KEY is not set".into()); yield Message::LlmDone; return; }
+        };
+
+        let client = reqwest::Client::new();
+        let mut input = Vec::with_capacity(history.len());
+        for (r, c) in &history { input.push(InputMsg { role: r.as_str(), content: c.as_str() }); }
+
+        let body = ResponsesReq {
+            model: &model,
+            input,
+            stream: true,
+            temperature,
+            max_output_tokens,
+        };
+
+        let resp = match client.post("https://api.openai.com/v1/responses")
+            .bearer_auth(key)
+            .json(&body)
+            .send().await
+        {
+            Ok(r) => r,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        if !resp.status().is_success() {
+            let txt = resp.text().await.unwrap_or_else(|_| "OpenAI HTTP error".into());
+            yield Message::LlmErr(txt);
+            yield Message::LlmDone;
+            return;
+        }
+
+        let mut buf = String::new();
+        let mut bytes = resp.bytes_stream();
+
+        while let Some(chunk) = bytes.next().await {
+            let chunk = match chunk {
+                Ok(b) => b,
+                Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            };
+
+            buf.push_str(&String::from_utf8_lossy(&chunk));
+
+            while let Some(i) = buf.find("\n\n") {
+                let frame = buf[..i].to_string();
+                buf.drain(..i + 2);
+
+                for line in frame.lines() {
+                    let Some(data) = line.strip_prefix("data: ") else { continue; };
+                    if data == "[DONE]" { yield Message::LlmDone; return; }
+
+                    let ev: StreamEvent = match serde_json::from_str(data) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+
+                    if ev.ty == "response.output_text.delta" {
+                        if let Some(d) = ev.delta { if !d.is_empty() { yield Message::LlmChunk(d); } }
+                    } else if ev.ty == "response.failed" || ev.ty == "response.error" {
+                        yield Message::LlmErr(format!("OpenAI stream error: {:?}", ev.error));
+                        yield Message::LlmDone;
+                        return;
+                    }
+                }
+            }
+        }
+
+        yield Message::LlmDone;
+    }
 }
