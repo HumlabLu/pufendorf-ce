@@ -22,6 +22,9 @@ use ollama_rs::{
     models::ModelOptions,
     Ollama,
 };
+use serde_json::Value;
+use std::fs;
+use std::path::Path;
 
 // LOG is the Id for the output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -95,39 +98,30 @@ struct App {
 }
 
 pub fn main() -> iced::Result {
+    let file_path = Path::new("chatprompts.json");
+    // Read the entire content of the JSON file into a string
+    let content = fs::read_to_string(file_path).expect("no file");
+    // Print just to confirm file reading success
+    // println!("File Content:\n{}", content);
+    let data: Value = serde_json::from_str(&content).expect("data");
+    // println!("{}", &data);
+    let sysprompt = &data["system_prompt"]
+        .as_str()
+        .unwrap_or("You are Samuel Von Pufendorf.");
+    let mut sysprompt = sysprompt.to_string();
+    // dbg!(sysprompt);
+    if let Some(extras) = data["extra_info"].as_array() {
+        for extra in extras {
+            // println!("{}", extra);
+            sysprompt += extra.as_str().unwrap_or("");
+        }
+    }
+
     let corpus = [
         "The rabbit munched the orange carrot.",
         "The snake hugged the green lizard.",
         "The hedgehog impaled the orange orange.",
         "The squirrel buried the brown nut.",
-        "Some extra facts about you: ",
-        "You were born: January 8, 1632, Dorfchemnitz, near Thalheim, Saxony. ",
-        "You died: October 13, 1694, Berlin (aged 62). ",
-        "You were married to Katharina Elisabeth von Palthen, the widow of a colleague, in 1665. ",
-        "You had two daughters, Magdalene, born 1666, and Emerentia Elisabeth, born 1668. ",
-        "Pufendorf’s father was a Lutheran pastor. ",
-        "Financial help from a rich nobleman enabled his father to send both Samuel and his older brother Esaias to a prestigious school in Grimma. ",
-        "He became a student of theology at the University of Leipzig, then a stronghold of Lutheran orthodoxy. ",
-        "He but soon turned his attention to jurisprudence, philology, philosophy, and history. ",
-        "In 1656 he went to Jena, where he was introduced to the dualistic system of the French philosopher and mathematician René Descartes. ",
-        "He read the works of the Dutch jurist Hugo Grotius and the English philosopher Thomas Hobbes. ",
-        "In 1658 Pufendorf was employed as a tutor in the home of the Swedish ambassador in Copenhagen. ",
-        "When war broke out between Sweden and Denmark, he was imprisoned. ",
-        "During eight months of confinement, he occupied himself by elaborating his first work on natural law, Two Books of the Elements of Universal Jurisprudence (1660), in which he further developed the ideas of Grotius and Hobbes. ",
-        "The elector palatine Karl Ludwig, created a chair of natural law for Pufendorf in the arts faculty at the University of Heidelberg. ",
-        "From 1661 to 1668 Pufendorf taught at Heidelberg, where he wrote The Present State of Germany (1667), written under the pseudonym Severnius de Monzabano Veronensis. ",
-        "Here is a list of your publications, with dates: ",
-        "Elementorum iurisprudentiae universalis (1660), ",
-        "Elementorum iurisprudentiae universalis libri duo (1660), ",
-        "De obligatione Patriam (1663), ",
-        "De rebus gestis Philippi Augustae (1663), ",
-        "De statu imperii germanici liber unus (1667), ",
-        "De statu imperii Germanici (1669), ",
-        "De jure naturae et gentium (1672), ",
-        "De officio hominis et civis juxta legem naturalem libri duo (1673), ",
-        "Einleitung zur Historie der vornehmsten Reiche und Staaten, ",
-        "Commentarium de rebus suecicis libri XXVI., ab expeditione Gustavi Adolphi regis in Germaniam ad abdicationem usque Christinae, ",
-        "De rebus a Carolo Gustavo gestis. ",
     ];
 
     let search_engine = SearchEngineBuilder::<u32>::with_corpus(Language::English, corpus).build();
@@ -147,15 +141,30 @@ pub fn main() -> iced::Result {
 
 impl App {
     fn new() -> Self {
+        // Read the prompts from a json file.
+        let file_path = Path::new("chatprompts.json");
+        let content = fs::read_to_string(file_path).expect("no file");
+        let data: Value = serde_json::from_str(&content).expect("data");
+        let sysprompt = &data["system_prompt"]
+            .as_str()
+            .unwrap_or("You are Samuel Von Pufendorf.");
+        let mut sysprompt = sysprompt.to_string();
+        if let Some(extras) = data["extra_info"].as_array() {
+            for extra in extras {
+                sysprompt += extra.as_str().unwrap_or("");
+            }
+        }
+
         let history = Arc::new(Mutex::new(vec![ChatMessage::system(
-            "You are Samuel von Pufendorf".to_string(),
+            // "You are Samuel von Pufendorf".to_string(),
+            sysprompt.clone(),
         )]));
 
         Self {
             model: "llama3.2:latest".into(),
             mode: Mode::Chat,
 
-            temperature: 0.7,
+            temperature: 0.1,
             num_predict: 512,
             max_turns: 20,
 
@@ -168,7 +177,7 @@ impl App {
 
             history,
 
-            system_prompt: "You are Samuel von Pufendorf".to_string(),
+            system_prompt: sysprompt,
             extra_info: "The year is 1667".into(),
         }
     }
