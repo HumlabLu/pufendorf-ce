@@ -323,7 +323,7 @@ impl App {
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
-                Role::Assistant => "Ollama: ",
+                Role::Assistant => "Pufendorf: ",
                 Role::System => "",
             };
             col.push(text(format!("{prefix}{}", line.content)).size(16))
