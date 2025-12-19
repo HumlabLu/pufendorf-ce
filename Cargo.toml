@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-stream = "0.3.6"
+bm25 = { version = "2.3.2", features = ["parallelism"] }
 iced = { version = "0.14", features = ["tokio"] }
 ollama-rs = { version = "0.3.3", features = ["stream"] }
 tokio-stream = "0.1.17"
