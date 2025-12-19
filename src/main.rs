@@ -14,6 +14,7 @@ use std::{
 use async_stream::stream;
 use tokio_stream::StreamExt;
 
+use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
 use ollama_rs::generation::chat::MessageRole;
 use ollama_rs::{
     generation::chat::{request::ChatMessageRequest, ChatMessage},
@@ -88,9 +89,55 @@ struct App {
     waiting: bool,
 
     history: Arc<Mutex<Vec<ChatMessage>>>,
+
+    system_prompt: String,
+    extra_info: String,
 }
 
 pub fn main() -> iced::Result {
+    let corpus = [
+        "The rabbit munched the orange carrot.",
+        "The snake hugged the green lizard.",
+        "The hedgehog impaled the orange orange.",
+        "The squirrel buried the brown nut.",
+        "Some extra facts about you: ",
+        "You were born: January 8, 1632, Dorfchemnitz, near Thalheim, Saxony. ",
+        "You died: October 13, 1694, Berlin (aged 62). ",
+        "You were married to Katharina Elisabeth von Palthen, the widow of a colleague, in 1665. ",
+        "You had two daughters, Magdalene, born 1666, and Emerentia Elisabeth, born 1668. ",
+        "Pufendorf’s father was a Lutheran pastor. ",
+        "Financial help from a rich nobleman enabled his father to send both Samuel and his older brother Esaias to a prestigious school in Grimma. ",
+        "He became a student of theology at the University of Leipzig, then a stronghold of Lutheran orthodoxy. ",
+        "He but soon turned his attention to jurisprudence, philology, philosophy, and history. ",
+        "In 1656 he went to Jena, where he was introduced to the dualistic system of the French philosopher and mathematician René Descartes. ",
+        "He read the works of the Dutch jurist Hugo Grotius and the English philosopher Thomas Hobbes. ",
+        "In 1658 Pufendorf was employed as a tutor in the home of the Swedish ambassador in Copenhagen. ",
+        "When war broke out between Sweden and Denmark, he was imprisoned. ",
+        "During eight months of confinement, he occupied himself by elaborating his first work on natural law, Two Books of the Elements of Universal Jurisprudence (1660), in which he further developed the ideas of Grotius and Hobbes. ",
+        "The elector palatine Karl Ludwig, created a chair of natural law for Pufendorf in the arts faculty at the University of Heidelberg. ",
+        "From 1661 to 1668 Pufendorf taught at Heidelberg, where he wrote The Present State of Germany (1667), written under the pseudonym Severnius de Monzabano Veronensis. ",
+        "Here is a list of your publications, with dates: ",
+        "Elementorum iurisprudentiae universalis (1660), ",
+        "Elementorum iurisprudentiae universalis libri duo (1660), ",
+        "De obligatione Patriam (1663), ",
+        "De rebus gestis Philippi Augustae (1663), ",
+        "De statu imperii germanici liber unus (1667), ",
+        "De statu imperii Germanici (1669), ",
+        "De jure naturae et gentium (1672), ",
+        "De officio hominis et civis juxta legem naturalem libri duo (1673), ",
+        "Einleitung zur Historie der vornehmsten Reiche und Staaten, ",
+        "Commentarium de rebus suecicis libri XXVI., ab expeditione Gustavi Adolphi regis in Germaniam ad abdicationem usque Christinae, ",
+        "De rebus a Carolo Gustavo gestis. ",
+    ];
+
+    let search_engine = SearchEngineBuilder::<u32>::with_corpus(Language::English, corpus).build();
+
+    let limit = 3;
+    let search_results = search_engine.search("orange", limit);
+    println!("{:?}", search_results);
+    let search_results = search_engine.search("When were you born?", limit);
+    println!("{:?}", search_results);
+
     iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
         .theme(theme)
@@ -101,7 +148,7 @@ pub fn main() -> iced::Result {
 impl App {
     fn new() -> Self {
         let history = Arc::new(Mutex::new(vec![ChatMessage::system(
-            "You are a helpful assistant.".to_string(),
+            "You are Samuel von Pufendorf".to_string(),
         )]));
 
         Self {
@@ -120,6 +167,9 @@ impl App {
             waiting: false,
 
             history,
+
+            system_prompt: "You are Samuel von Pufendorf".to_string(),
+            extra_info: "The year is 1667".into(),
         }
     }
 
@@ -165,7 +215,8 @@ impl App {
                     content: "Cleared.".into(),
                 }];
                 *self.history.lock().unwrap() = vec![ChatMessage::system(
-                    "You are a helpful assistant.".to_string(),
+                    // "You are a helpful assistant.".to_string(),
+                    self.system_prompt.clone(),
                 )];
                 Task::none()
             }
