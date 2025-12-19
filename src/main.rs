@@ -17,7 +17,7 @@ use tokio_stream::StreamExt;
 use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
 use ollama_rs::generation::chat::MessageRole;
 use ollama_rs::{
-    generation::chat::{request::ChatMessageRequest, ChatMessage},
+    generation::chat::{request::ChatMessageRequest /*, ChatMessage */},
     generation::completion::request::GenerationRequest,
     models::ModelOptions,
     Ollama,
@@ -25,10 +25,17 @@ use ollama_rs::{
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
+use openai_dive::v1::api::Client;
+use openai_dive::v1::endpoints::chat::RoleTrackingStream;
+use openai_dive::v1::models::Gpt4Model;
+use openai_dive::v1::resources::chat::{
+    ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage, ChatMessageContent,
+    DeltaChatMessage,
+};
 
 // LOG is the Id for the output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
-static MODES: [Mode; 2] = [Mode::Completion, Mode::Chat];
+static MODES: [Mode; 1] = [Mode::Chat];
 
 fn theme(_: &App) -> Theme {
     Theme::Dark
@@ -36,13 +43,11 @@ fn theme(_: &App) -> Theme {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    Completion,
     Chat,
 }
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Mode::Completion => write!(f, "Completion"),
             Mode::Chat => write!(f, "Chat (history)"),
         }
     }
@@ -60,6 +65,7 @@ struct Line {
     content: String,
 }
 
+// Messages for iced GUI.
 #[derive(Debug, Clone)]
 enum Message {
     DraftChanged(String),
@@ -78,7 +84,7 @@ enum Message {
     LlmErr(String),
 }
 
-// "Global" data for the app.
+// "Global" data for the iced app.
 struct App {
     model: String,
     mode: Mode,
@@ -91,23 +97,16 @@ struct App {
     lines: Vec<Line>,
     waiting: bool,
 
-    history: Arc<Mutex<Vec<ChatMessage>>>,
+    history: Arc<Mutex<Vec<String>>>,
 
     system_prompt: String,
     extra_info: String,
 }
 
 // use futures::StreamExt;
-use openai_dive::v1::api::Client;
-use openai_dive::v1::endpoints::chat::RoleTrackingStream;
-use openai_dive::v1::models::Gpt4Model;
 
 #[tokio::main]
 async fn openai_stream() {
-    use openai_dive::v1::resources::chat::{
-        ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage, ChatMessageContent,
-        DeltaChatMessage,
-    };
     let client = Client::new_from_env();
 
     let parameters = ChatCompletionParametersBuilder::default()
@@ -225,10 +224,9 @@ impl App {
             }
         }
 
-        let history = Arc::new(Mutex::new(vec![ChatMessage::system(
-            // "You are Samuel von Pufendorf".to_string(),
-            sysprompt.clone(),
-        )]));
+        let history = Arc::new(Mutex::new(vec![
+            "You are Samuel von Pufendorf".to_string(),
+        ]));
 
         Self {
             model: "llama3.2:latest".into(),
@@ -293,10 +291,8 @@ impl App {
                     role: Role::System,
                     content: "Cleared.".into(),
                 }];
-                *self.history.lock().unwrap() = vec![ChatMessage::system(
-                    // "You are a helpful assistant.".to_string(),
-                    self.system_prompt.clone(),
-                )];
+                *self.history.lock().unwrap() = vec!["You are a helpful assistant.".to_string(),
+                ];
                 Task::none()
             }
 
@@ -327,9 +323,9 @@ impl App {
                     .num_predict(self.num_predict);
 
                 let task = match self.mode {
-                    Mode::Completion => Task::stream(stream_completion(model, prompt, opts)),
                     Mode::Chat => {
-                        Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
+                        // Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
+                        todo!();
                     }
                 };
 
@@ -361,10 +357,7 @@ impl App {
                 self.waiting = false;
 
                 if self.mode == Mode::Chat {
-                    trim_history_by_turns(
-                        &mut self.history.lock().unwrap(),
-                        self.max_turns as usize,
-                    );
+                    // Here we used to trim.
                 }
 
                 snap_to(LOG.clone(), RelativeOffset::END)
@@ -404,8 +397,6 @@ impl App {
         )
         .width(Length::Fill)
         .height(Length::Fill);
-
-        let _modes = [Mode::Completion, Mode::Chat];
 
         let controls = row![
             text("Mode:"),
@@ -449,31 +440,7 @@ impl App {
             .into()
     }
 }
-
-fn stream_completion(
-    model: String,
-    prompt: String,
-    opts: ModelOptions,
-) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
-    stream! {
-        let ollama = Ollama::default();
-        let req = GenerationRequest::new(model, prompt).options(opts);
-
-        let mut s = match ollama.generate_stream(req).await {
-            Ok(s) => s,
-            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
-        };
-
-        while let Some(item) = s.next().await {
-            match item {
-                Ok(responses) => for r in responses { if !r.response.is_empty() { yield Message::LlmChunk(r.response); } }
-                Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
-            }
-        }
-        yield Message::LlmDone;
-    }
-}
-
+/*
 fn stream_chat(
     model: String,
     user_prompt: String,
@@ -502,29 +469,5 @@ fn stream_chat(
         yield Message::LlmDone;
     }
 }
+*/
 
-fn trim_history_by_turns(history: &mut Vec<ChatMessage>, max_turns: usize) {
-    if max_turns == 0 {
-        return;
-    }
-
-    let (sys, rest) = if matches!(history.first(), Some(m) if matches!(m.role, MessageRole::System))
-    {
-        (Some(history[0].clone()), history[1..].to_vec())
-    } else {
-        (None, history.clone())
-    };
-
-    let keep = max_turns.saturating_mul(2);
-    let rest = if rest.len() > keep {
-        rest[rest.len() - keep..].to_vec()
-    } else {
-        rest
-    };
-
-    history.clear();
-    if let Some(s) = sys {
-        history.push(s);
-    }
-    history.extend(rest);
-}
