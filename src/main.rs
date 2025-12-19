@@ -15,13 +15,6 @@ use async_stream::stream;
 use tokio_stream::StreamExt;
 
 use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
-use ollama_rs::generation::chat::MessageRole;
-use ollama_rs::{
-    generation::chat::{request::ChatMessageRequest /*, ChatMessage */},
-    generation::completion::request::GenerationRequest,
-    models::ModelOptions,
-    Ollama,
-};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -40,6 +33,26 @@ static MODES: [Mode; 1] = [Mode::Chat];
 fn theme(_: &App) -> Theme {
     Theme::Dark
 }
+
+// ----
+// Struct for model options like temp &c.
+#[derive(Debug, Default, Clone)]
+pub struct ModelOptions {
+    pub temperature: f32,
+    pub num_predict: i32,
+}
+impl ModelOptions {
+    pub fn temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    pub fn num_predict(mut self, num_predict: i32) -> Self {
+        self.num_predict = num_predict;
+        self
+    }
+}
+// ----
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
