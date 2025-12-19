@@ -98,6 +98,7 @@ struct App {
 }
 
 pub fn main() -> iced::Result {
+    /*
     let file_path = Path::new("chatprompts.json");
     // Read the entire content of the JSON file into a string
     let content = fs::read_to_string(file_path).expect("no file");
@@ -116,7 +117,7 @@ pub fn main() -> iced::Result {
             sysprompt += extra.as_str().unwrap_or("");
         }
     }
-
+    */
     let corpus = [
         "The rabbit munched the orange carrot.",
         "The snake hugged the green lizard.",
@@ -142,6 +143,7 @@ pub fn main() -> iced::Result {
 impl App {
     fn new() -> Self {
         // Read the prompts from a json file.
+        // Should contain a system_prompt and extra_info.
         let file_path = Path::new("chatprompts.json");
         let content = fs::read_to_string(file_path).expect("no file");
         let data: Value = serde_json::from_str(&content).expect("data");
