@@ -206,7 +206,7 @@ pub fn main() -> iced::Result {
         }
     }
     */
-    get_models();
+    // get_models();
     // openai_stream();
 
     let corpus = [
@@ -256,7 +256,7 @@ impl App {
         ));
 
         Self {
-            model: "llama3.2:latest".into(),
+            model: Gpt4Model::Gpt4O.to_string(), //"llama3.2:latest".into(),
             mode: Mode::Chat,
 
             temperature: 0.1,
@@ -307,7 +307,7 @@ impl App {
 
             Message::ResetParams => {
                 self.temperature = 0.7;
-                self.num_predict = 256;
+                self.num_predict = 512;
                 self.max_turns = 20;
                 Task::none()
             }
@@ -499,11 +499,11 @@ fn stream_chat(
     }
 }
 */
-fn stream_chat(
-    model: String,
-    user_prompt: String,
-    opts: ModelOptions,
-    history: Arc<Mutex<Vec<Line>>>,
+fn _stream_chat(
+    _model: String,
+    _user_prompt: String,
+    _opts: ModelOptions,
+    _history: Arc<Mutex<Vec<Line>>>,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
 
@@ -521,7 +521,8 @@ fn stream_chat(
 }
 
 
-
+// Function to convert Line to ChatMessage.
+// TODO let history use ChatMessage instead.
 fn line_to_chat_message(line: &Line) -> ChatMessage {
     let content = ChatMessageContent::Text(line.content.clone());
     match line.role {
@@ -557,11 +558,10 @@ fn stream_chat_oai(
         });
 
         let max_tokens = u32::try_from(opts.num_predict).ok();
-        let oai_model = Gpt4Model::Gpt4O.to_string();
         let params = match ChatCompletionParametersBuilder::default()
-            .model(oai_model)
+            .model(model)
             .messages(messages)
-            .max_tokens(512u32)
+            .max_tokens(max_tokens.unwrap())
             .temperature(opts.temperature)
             .response_format(ChatCompletionResponseFormat::Text)
             .build()
