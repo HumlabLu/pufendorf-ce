@@ -120,7 +120,6 @@ struct App {
 
 #[tokio::main]
 async fn get_models() {
-
     let client = Client::new_from_env();
     let result = client
         .models()
@@ -355,7 +354,7 @@ impl App {
 
                 let task = match self.mode {
                     Mode::Chat => {
-                        Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
+                        Task::stream(stream_chat_oai(model, prompt, opts, self.history.clone()))
                     }
                 };
                 // Task::none()
@@ -521,3 +520,88 @@ fn stream_chat(
     }
 }
 
+
+
+fn line_to_chat_message(line: &Line) -> ChatMessage {
+    let content = ChatMessageContent::Text(line.content.clone());
+    match line.role {
+        Role::User => ChatMessage::User { content, name: None },
+        Role::System => ChatMessage::System { content, name: None },
+        Role::Assistant => ChatMessage::Assistant {
+            content: Some(content),
+            reasoning_content: None,
+            refusal: None,
+            name: None,
+            audio: None,
+            tool_calls: None,
+        },
+    }
+}
+fn stream_chat_oai(
+    model: String,
+    user_prompt: String,
+    opts: ModelOptions,
+    history: Arc<Mutex<Vec<Line>>>,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+        let client = Client::new_from_env();
+
+        let mut messages: Vec<ChatMessage> = {
+            let h = history.lock().unwrap();
+            h.iter().map(line_to_chat_message).collect()
+        };
+
+        messages.push(ChatMessage::User {
+            content: ChatMessageContent::Text(user_prompt.clone()),
+            name: None,
+        });
+
+        let max_tokens = u32::try_from(opts.num_predict).ok();
+        let oai_model = Gpt4Model::Gpt4O.to_string();
+        let params = match ChatCompletionParametersBuilder::default()
+            .model(oai_model)
+            .messages(messages)
+            .max_tokens(512u32)
+            .temperature(opts.temperature)
+            .response_format(ChatCompletionResponseFormat::Text)
+            .build()
+        {
+            Ok(p) => p,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        let stream0 = match client.chat().create_stream(params).await {
+            Ok(s) => s,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        let mut tracked = RoleTrackingStream::new(stream0);
+
+        let mut assistant_acc = String::new();
+
+        while let Some(item) = tracked.next().await {
+            match item {
+                Ok(chat_response) => {
+                    for choice in &chat_response.choices {
+                        if let DeltaChatMessage::Assistant { content: Some(delta), .. } = &choice.delta {
+                            let s = delta.to_string();
+                            if !s.is_empty() {
+                                assistant_acc.push_str(&s);
+                                yield Message::LlmChunk(s);
+                            }
+                        }
+                    }
+                }
+                Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            }
+        }
+
+        {
+            let mut h = history.lock().unwrap();
+            h.push(Line { role: Role::User, content: user_prompt });
+            h.push(Line { role: Role::Assistant, content: assistant_acc });
+        }
+
+        yield Message::LlmDone;
+    }
+}
