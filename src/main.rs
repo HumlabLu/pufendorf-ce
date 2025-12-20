@@ -599,6 +599,7 @@ fn stream_chat_oai(
         {
             let mut h = history.lock().unwrap();
             h.push(Line { role: Role::User, content: user_prompt });
+            println!("Pusing: {}", &assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
