@@ -440,7 +440,7 @@ impl App {
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
-                Role::Assistant => "Pufendorf: ",
+                Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
             col.push(text(format!("{prefix}{}", line.content)).size(24))
@@ -459,11 +459,11 @@ impl App {
             pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
             text(format!("Temp: {:.1}", self.temperature)),
             slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
-                .width(Length::Fixed(180.0))
+                .width(Length::FillPortion(2))
                 .step(0.05),
             text(format!("Max tokens: {}", self.num_predict)),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
-                .width(Length::Fixed(180.0))
+                .width(Length::FillPortion(1))
                 .step(12),
             // text(format!("Max turns: {}", self.max_turns)),
             // slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
