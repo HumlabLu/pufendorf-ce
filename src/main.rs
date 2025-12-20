@@ -613,8 +613,10 @@ fn stream_chat_oai(
             }
         }*/
         if flagged {
-            yield Message::LlmChunk("Please ask anothre question!".to_string());
-            return yield Message::LlmDone;
+            println!("Mod: {:?}", cats);
+            yield Message::LlmChunk("Please ask another question!".to_string());
+            yield Message::LlmDone;
+            return;
         }
         // ----
 
