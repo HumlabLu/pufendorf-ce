@@ -20,7 +20,7 @@ use std::fs;
 use std::path::Path;
 use openai_dive::v1::api::Client;
 use openai_dive::v1::endpoints::chat::RoleTrackingStream;
-use openai_dive::v1::models::Gpt4Model;
+use openai_dive::v1::models::Gpt5Model;
 use openai_dive::v1::resources::chat::{
     ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage, ChatMessageContent,
     DeltaChatMessage,
@@ -125,7 +125,9 @@ async fn get_models() {
         .models()
         .list()
         .await.unwrap();
-    println!("{:?}", result);
+    for model in result.data {
+        println!("{}", model.id);
+    }
 }
 
 #[tokio::main]
@@ -133,7 +135,7 @@ async fn openai_stream() {
     let client = Client::new_from_env();
 
     let parameters = ChatCompletionParametersBuilder::default()
-        .model(Gpt4Model::Gpt4O.to_string())
+        .model(Gpt5Model::Gpt5Nano.to_string())
         .messages(vec![
             ChatMessage::User {
                 content: ChatMessageContent::Text("Hello!".to_string()),
@@ -254,9 +256,29 @@ impl App {
                 content: sysprompt.clone(),
             }]
         ));
-
+        /*
+        pub enum Gpt5Model {
+            #[serde(rename = "gpt-5")]
+            Gpt5,
+            #[serde(rename = "gpt-5-mini")]
+            Gpt5Mini,
+            #[serde(rename = "gpt-5-nano")]
+            Gpt5Nano,
+        }
+        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+        pub enum Gpt4Model {
+            #[serde(rename = "gpt-4.1")]
+            Gpt41,
+            #[serde(rename = "gpt-4o")]
+            Gpt4O,
+            #[serde(rename = "gpt-4o-audio-preview")]
+            Gpt4OAudioPreview,
+        }
+        https://community.openai.com/t/is-anyone-experiencing-issues-with-gpt-5-nano-returning-no-output/1351246
+        */
         Self {
-            model: Gpt4Model::Gpt4O.to_string(), //"llama3.2:latest".into(),
+            // gpt-5-nano
+            model: "gpt-4.1-nano".into(), //Gpt5Model::Gpt5Nano.to_string()
             mode: Mode::Chat,
 
             temperature: 0.1,
@@ -525,6 +547,7 @@ fn _stream_chat(
 // TODO let history use ChatMessage instead.
 fn line_to_chat_message(line: &Line) -> ChatMessage {
     let content = ChatMessageContent::Text(line.content.clone());
+    // println!("{}", content);
     match line.role {
         Role::User => ChatMessage::User { content, name: None },
         Role::System => ChatMessage::System { content, name: None },
@@ -538,6 +561,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
         },
     }
 }
+
 fn stream_chat_oai(
     model: String,
     user_prompt: String,
@@ -599,7 +623,7 @@ fn stream_chat_oai(
         {
             let mut h = history.lock().unwrap();
             h.push(Line { role: Role::User, content: user_prompt });
-            println!("Pusing: {}", &assistant_acc);
+            // println!("Pusing: {}", &assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
