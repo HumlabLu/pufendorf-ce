@@ -1,3 +1,4 @@
+use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
@@ -230,8 +231,7 @@ pub fn main() -> iced::Result {
         .title("Speak with Pufendorf")
         .theme(theme)
         .settings(Settings::default())
-        .font(include_bytes!("/Users/pberck/Library/Fonts/JetBrainsMonoNLNerdFont-Medium.ttf").as_slice())
-        .font(include_bytes!("/Users/pberck/Development/Rust/bevy/assets/fonts/FiraMono-Medium.ttf").as_slice())
+        .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
         /*
         .settings(Settings {
             default_text_size: 24.into(),
@@ -444,13 +444,13 @@ impl App {
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
         const MY_SIZE:u32 = 20;
 
-        let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
+        let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
                 Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(MY_SIZE).font(MY_FONT))
+            col.push(text(format!("{prefix}{}", line.content)).size(MY_SIZE).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
         });
 
         let top = container(

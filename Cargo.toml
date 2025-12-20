@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 async-stream = "0.3.6"
 bm25 = { version = "2.3.2", features = ["parallelism"] }
-iced = { version = "0.14", features = ["tokio"] }
+iced = { version = "0.14", features = ["tokio", "advanced"] }
 lazy_static = "1.5.0"
 openai_dive = { version = "1.4.0", features = ["stream"] }
 serde = "1.0.228"
