@@ -15,7 +15,6 @@ use std::{
 };
 use async_stream::stream;
 use tokio_stream::StreamExt;
-
 use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
 use serde_json::Value;
 use std::fs;
@@ -35,7 +34,6 @@ use std::str::FromStr;
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
-static MODES: [Mode; 1] = [Mode::Chat];
 
 #[derive(Parser)]
 #[command(version, about, long_about = "Reading data.")]
@@ -70,7 +68,7 @@ fn log_format(
 
 
 fn theme(_: &App) -> Theme {
-    Theme::Dark
+    Theme::TokyoNight //GruvboxLight //Dark
 }
 
 // ----
@@ -343,11 +341,11 @@ impl App {
             num_predict: 1024,
             max_turns: 20,
 
-            // Draft is user input, lines are everyting inthe output pane.
+            // Draft is user input, lines are everyting in the output pane.
             draft: String::new(),
             lines: vec![Line {
                 role: Role::System,
-                content: "Ready.".into(),
+                content: "".into(),
             }],
             waiting: false,
 
@@ -470,6 +468,7 @@ impl App {
                 self.waiting = false;
                 if self.mode == Mode::Chat {
                     // Here we used to trim.
+                    trace!("H: {:?}", self.history);
                 }
                 snap_to(LOG.clone(), RelativeOffset::END)
             }
@@ -720,10 +719,10 @@ fn stream_chat_oai(
 
         {
             let mut h = history.lock().unwrap();
-            info!("{}", user_prompt);
+            info!("Q: {}", user_prompt);
             h.push(Line { role: Role::User, content: user_prompt });
             // println!("Pusing: {}", &assistant_acc);
-            info!("{}", assistant_acc);
+            info!("A: {}", assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
