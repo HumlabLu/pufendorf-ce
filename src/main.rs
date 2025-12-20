@@ -281,8 +281,8 @@ impl App {
             model: "gpt-4.1-nano".into(), //Gpt5Model::Gpt5Nano.to_string()
             mode: Mode::Chat,
 
-            temperature: 0.1,
-            num_predict: 512,
+            temperature: 0.05,
+            num_predict: 1024,
             max_turns: 20,
 
             // Draft is user input, lines are everyting inthe output pane.
@@ -296,7 +296,7 @@ impl App {
             history,
 
             system_prompt: sysprompt,
-            extra_info: "The year is 1667".into(),
+            extra_info: "The year is 1667".into(), // Not used.
         }
     }
 
