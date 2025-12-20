@@ -230,6 +230,7 @@ pub fn main() -> iced::Result {
         .title("Speak with Pufendorf")
         .theme(theme)
         .settings(Settings::default())
+        .font(include_bytes!("/Users/pberck/Library/Fonts/JetBrainsMonoNLNerdFont-Medium.ttf").as_slice())
         /*
         .settings(Settings {
             default_text_size: 24.into(),
@@ -261,6 +262,7 @@ impl App {
                 content: sysprompt.clone(),
             }]
         ));
+
         /*
         pub enum Gpt5Model {
             #[serde(rename = "gpt-5")]
@@ -437,13 +439,15 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
+
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
                 Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(24))
+            col.push(text(format!("{prefix}{}", line.content)).size(24).font(MY_FONT))
         });
 
         let top = container(
@@ -478,6 +482,7 @@ impl App {
             .on_submit(Message::Submit)
             .padding(10)
             .size(24)
+            .font(MY_FONT)
             .width(Length::Fill);
 
         let bottom = container(
