@@ -2,7 +2,7 @@ use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
-use log::{debug, error, info, LevelFilter};
+use log::{debug, error, info, trace, LevelFilter};
 use flexi_logger::{DeferredNow, Record};
 use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
@@ -31,6 +31,7 @@ use openai_dive::v1::models::ModerationModel;
 use openai_dive::v1::resources::moderation::{ModerationInput, ModerationParametersBuilder};
 use clap::Parser;
 use std::io::Write;
+use std::str::FromStr;
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -43,7 +44,6 @@ struct Cli {
     /// error, warn, info, debug, or trace
     #[arg(short, long, default_value = "info")]
     log_level: String,
-    postfrequencymonths: Option<u32>,
 }
 
 fn log_format(
@@ -214,6 +214,29 @@ async fn openai_stream() {
 }
 
 pub fn main() -> iced::Result {
+    let cli = Cli::parse();
+
+    // This switches off logging from html5 and other crates.
+    let level_filter = LevelFilter::from_str(&cli.log_level).unwrap_or(LevelFilter::Off);
+    let log_spec = LogSpecification::builder()
+        .module("html5ever", LevelFilter::Off)
+        .module("rusty_puff", level_filter) // Sets our level to the one on the cli.
+        .build();
+
+    let _logger = Logger::with(log_spec)
+        .format(log_format)
+        .log_to_file(
+            FileSpec::default()
+                .suppress_timestamp()
+                .basename("pufenbot")
+                .suffix("log"),
+        )
+        .append()
+        .duplicate_to_stderr(Duplicate::All)
+        .write_mode(WriteMode::BufferAndFlush)
+        .start().expect("Logging?");
+    info!("Start");
+    
     /*
     let file_path = Path::new("chatprompts.json");
     // Read the entire content of the JSON file into a string
@@ -248,9 +271,9 @@ pub fn main() -> iced::Result {
 
     let limit = 3;
     let search_results = search_engine.search("orange", limit);
-    println!("{:?}", search_results);
+    debug!("{:?}", search_results);
     let search_results = search_engine.search("When were you born?", limit);
-    println!("{:?}", search_results);
+    debug!("{:?}", search_results);
 
     iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
@@ -277,10 +300,12 @@ impl App {
             .unwrap_or("You are Samuel Von Pufendorf.");
         let mut sysprompt = sysprompt.to_string();
         if let Some(extras) = data["extra_info"].as_array() {
+            sysprompt += "\n";
             for extra in extras {
                 sysprompt += extra.as_str().unwrap_or("");
             }
         }
+        debug!("{}", sysprompt);
 
         let history = Arc::new(Mutex::new(vec![
             Line {
@@ -430,6 +455,7 @@ impl App {
             Message::LlmChunk(chunk) => {
                 if let Some(last) = self.lines.last_mut() {
                     if matches!(last.role, Role::Assistant) {
+                        trace!("{}", chunk);
                         if chunk.starts_with(&last.content) {
                             last.content = chunk;
                         } else {
@@ -504,9 +530,9 @@ impl App {
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
             button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
         ]
-        .spacing(12).align_y(iced::Alignment::Center);
+        .spacing(12).align_y(iced::Alignment::Center).padding(10);
 
-        let input = text_input("Type and press Enter…", &self.draft)
+        let input = text_input("Type your question…", &self.draft)
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
@@ -694,8 +720,10 @@ fn stream_chat_oai(
 
         {
             let mut h = history.lock().unwrap();
+            info!("{}", user_prompt);
             h.push(Line { role: Role::User, content: user_prompt });
             // println!("Pusing: {}", &assistant_acc);
+            info!("{}", assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
