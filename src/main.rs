@@ -230,6 +230,11 @@ pub fn main() -> iced::Result {
         .title("Speak with Pufendorf")
         .theme(theme)
         .settings(Settings::default())
+        /*
+        .settings(Settings {
+            default_text_size: 24.into(),
+            ..Settings::default()
+        })*/
         .run()
 }
 
@@ -438,7 +443,7 @@ impl App {
                 Role::Assistant => "Pufendorf: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(16))
+            col.push(text(format!("{prefix}{}", line.content)).size(24))
         });
 
         let top = container(
@@ -455,14 +460,14 @@ impl App {
             text(format!("Temp: {:.1}", self.temperature)),
             slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
                 .width(Length::Fixed(180.0))
-                .step(0.1),
+                .step(0.05),
             text(format!("Max tokens: {}", self.num_predict)),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::Fixed(180.0))
                 .step(12),
-            text(format!("Max turns: {}", self.max_turns)),
-            slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
-                .width(Length::Fixed(160.0)),
+            // text(format!("Max turns: {}", self.max_turns)),
+            // slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
+                // .width(Length::Fixed(160.0)),
             button("Reset").on_press(Message::ResetParams),
             button("Clear").on_press(Message::ClearAll),
         ]
@@ -472,7 +477,7 @@ impl App {
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
-            .size(16)
+            .size(24)
             .width(Length::Fill);
 
         let bottom = container(
@@ -555,7 +560,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
             content: Some(content),
             reasoning_content: None,
             refusal: None,
-            name: None,
+            name: Some("Pufendorf".to_string()), // TODO check?
             audio: None,
             tool_calls: None,
         },
