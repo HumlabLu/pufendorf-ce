@@ -6,8 +6,11 @@ edition = "2024"
 [dependencies]
 async-stream = "0.3.6"
 bm25 = { version = "2.3.2", features = ["parallelism"] }
+clap = { version = "4.5.53", features = ["derive"] }
+flexi_logger = "0.31.7"
 iced = { version = "0.14", features = ["tokio", "advanced"] }
 lazy_static = "1.5.0"
+log = "0.4.29"
 openai_dive = { version = "1.4.0", features = ["stream"] }
 serde = "1.0.228"
 serde_json = "1.0.145"

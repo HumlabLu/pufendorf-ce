@@ -2,7 +2,9 @@ use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
-
+use log::{debug, error, info, LevelFilter};
+use flexi_logger::{DeferredNow, Record};
+use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
     widget::{button, column, container, pick_list, row, scrollable, slider, text, text_input},
     Element, Length, Settings, Task, Theme,
@@ -11,7 +13,6 @@ use std::{
     fmt,
     sync::{Arc, LazyLock, Mutex},
 };
-
 use async_stream::stream;
 use tokio_stream::StreamExt;
 
@@ -28,10 +29,45 @@ use openai_dive::v1::resources::chat::{
 };
 use openai_dive::v1::models::ModerationModel;
 use openai_dive::v1::resources::moderation::{ModerationInput, ModerationParametersBuilder};
+use clap::Parser;
+use std::io::Write;
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 static MODES: [Mode; 1] = [Mode::Chat];
+
+#[derive(Parser)]
+#[command(version, about, long_about = "Reading data.")]
+struct Cli {
+    /// Sets the level of logging;
+    /// error, warn, info, debug, or trace
+    #[arg(short, long, default_value = "info")]
+    log_level: String,
+    postfrequencymonths: Option<u32>,
+}
+
+fn log_format(
+    w: &mut dyn Write,
+    now: &mut DeferredNow,
+    record: &Record,
+) -> Result<(), std::io::Error> {
+    let file_path = record.file().unwrap_or("<unknown>");
+    let file_name = Path::new(file_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("<unknown>");
+    let line = record.line().unwrap_or(0);
+    write!(
+        w,
+        "{} [{}] {}:{} - {}",
+        now.format("%Y-%m-%d %H:%M:%S"), // Format without standard timezone.
+        record.level(),
+        file_name,
+        line,
+        &record.args()
+    )
+}
+
 
 fn theme(_: &App) -> Theme {
     Theme::Dark
@@ -119,19 +155,6 @@ struct App {
     extra_info: String,
 }
 
-// use futures::StreamExt;
-
-#[tokio::main]
-async fn get_models() {
-    let client = Client::new_from_env();
-    let result = client
-        .models()
-        .list()
-        .await.unwrap();
-    for model in result.data {
-        println!("{}", model.id);
-    }
-}
 
 #[tokio::main]
 async fn openai_stream() {
