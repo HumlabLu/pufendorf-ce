@@ -26,6 +26,8 @@ use openai_dive::v1::resources::chat::{
     ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage, ChatMessageContent,
     DeltaChatMessage,
 };
+use openai_dive::v1::models::ModerationModel;
+use openai_dive::v1::resources::moderation::{ModerationInput, ModerationParametersBuilder};
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -584,6 +586,37 @@ fn stream_chat_oai(
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
+
+        // Moderation ----
+        let parameters = ModerationParametersBuilder::default()
+                .model(ModerationModel::OmniModerationLatest.to_string())
+                // .input(ModerationInput::Text("I want to kill them.".to_string()))
+                .input(ModerationInput::Array(vec![
+                    user_prompt.clone()
+                ]))
+                .build()
+                .unwrap();
+        let result = client.moderations().create(parameters).await.unwrap();
+        let cats = &result.results[0].category_scores;
+        let flagged = result.results[0].flagged;
+        // println!("Mod: {:?}", cats);
+        /*
+        let mut flagged = false;
+        let v = serde_json::to_value(&cats).unwrap();
+        if let Value::Object(map) = v {
+            for (k, v) in map {
+                let score = v.as_f64().unwrap();
+                println!("{k}: {score}");
+                if score > 0.6 {
+                    flagged = true;
+                }
+            }
+        }*/
+        if flagged {
+            yield Message::LlmChunk("Please ask anothre question!".to_string());
+            return yield Message::LlmDone;
+        }
+        // ----
 
         let mut messages: Vec<ChatMessage> = {
             let h = history.lock().unwrap();
