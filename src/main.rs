@@ -347,11 +347,12 @@ impl App {
                 self.waiting = false;
                 self.lines = vec![Line {
                     role: Role::System,
-                    content: "Cleared.".into(),
+                    content: "".into(),
                 }];
                 *self.history.lock().unwrap() = vec![Line {
                     role: Role::System,
-                    content: "You are a helpful assistant.".to_string(),
+                    content: self.system_prompt.clone(),
+                    //"You are a helpful assistant.".to_string(),
                 }];
                 Task::none()
             }
@@ -568,7 +569,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
             content: Some(content),
             reasoning_content: None,
             refusal: None,
-            name: Some("Pufendorf".to_string()), // TODO check?
+            name: None, //Some("Pufendorf".to_string()), // TODO check?
             audio: None,
             tool_calls: None,
         },
