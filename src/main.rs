@@ -290,7 +290,7 @@ impl App {
     fn new() -> Self {
         // Read the prompts from a json file.
         // Should contain a system_prompt and extra_info.
-        let file_path = Path::new("chatprompts.json");
+        let file_path = Path::new("assets/chatprompts.json");
         let content = fs::read_to_string(file_path).expect("no file");
         let data: Value = serde_json::from_str(&content).expect("data");
         let sysprompt = &data["system_prompt"]
@@ -300,6 +300,7 @@ impl App {
         if let Some(extras) = data["extra_info"].as_array() {
             sysprompt += "\n";
             for extra in extras {
+                sysprompt += "\n";
                 sysprompt += extra.as_str().unwrap_or("");
             }
         }
