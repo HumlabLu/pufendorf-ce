@@ -231,6 +231,7 @@ pub fn main() -> iced::Result {
         .theme(theme)
         .settings(Settings::default())
         .font(include_bytes!("/Users/pberck/Library/Fonts/JetBrainsMonoNLNerdFont-Medium.ttf").as_slice())
+        .font(include_bytes!("/Users/pberck/Development/Rust/bevy/assets/fonts/FiraMono-Medium.ttf").as_slice())
         /*
         .settings(Settings {
             default_text_size: 24.into(),
@@ -439,7 +440,9 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
+        // const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
+        const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
+        const MY_SIZE:u32 = 24;
 
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
@@ -447,7 +450,7 @@ impl App {
                 Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(24).font(MY_FONT))
+            col.push(text(format!("{prefix}{}", line.content)).size(MY_SIZE).font(MY_FONT))
         });
 
         let top = container(
@@ -459,21 +462,21 @@ impl App {
         .height(Length::Fill);
 
         let controls = row![
-            text("Mode:"),
-            pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
-            text(format!("Temp: {:.1}", self.temperature)),
+            // text("Mode:").font(MY_FONT),
+            // pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
+            text(format!("Temp: {:.1}", self.temperature)).font(MY_FONT),
             slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
                 .width(Length::FillPortion(2))
                 .step(0.05),
-            text(format!("Max tokens: {}", self.num_predict)),
+            text(format!("Max tokens: {}", self.num_predict)).font(MY_FONT),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::FillPortion(1))
                 .step(12),
             // text(format!("Max turns: {}", self.max_turns)),
             // slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
                 // .width(Length::Fixed(160.0)),
-            button("Reset").on_press(Message::ResetParams),
-            button("Clear").on_press(Message::ClearAll),
+            button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
+            button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
         ]
         .spacing(12);
 
