@@ -26,7 +26,7 @@ use openai_dive::v1::resources::chat::{
     DeltaChatMessage,
 };
 
-// LOG is the Id for the output pane, needed in the snap_to(...) function.
+// LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 static MODES: [Mode; 1] = [Mode::Chat];
 
@@ -110,13 +110,24 @@ struct App {
     lines: Vec<Line>,
     waiting: bool,
 
-    history: Arc<Mutex<Vec<String>>>,
+    history: Arc<Mutex<Vec<Line>>>,
 
     system_prompt: String,
     extra_info: String,
 }
 
 // use futures::StreamExt;
+
+#[tokio::main]
+async fn get_models() {
+
+    let client = Client::new_from_env();
+    let result = client
+        .models()
+        .list()
+        .await.unwrap();
+    println!("{:?}", result);
+}
 
 #[tokio::main]
 async fn openai_stream() {
@@ -196,7 +207,8 @@ pub fn main() -> iced::Result {
         }
     }
     */
-    openai_stream();
+    get_models();
+    // openai_stream();
 
     let corpus = [
         "The rabbit munched the orange carrot.",
@@ -238,8 +250,11 @@ impl App {
         }
 
         let history = Arc::new(Mutex::new(vec![
-            "You are Samuel von Pufendorf".to_string(),
-        ]));
+            Line {
+                role: Role::System,
+                content: sysprompt.clone(),
+            }]
+        ));
 
         Self {
             model: "llama3.2:latest".into(),
@@ -249,6 +264,7 @@ impl App {
             num_predict: 512,
             max_turns: 20,
 
+            // Draft is user input, lines are everyting inthe output pane.
             draft: String::new(),
             lines: vec![Line {
                 role: Role::System,
@@ -304,8 +320,10 @@ impl App {
                     role: Role::System,
                     content: "Cleared.".into(),
                 }];
-                *self.history.lock().unwrap() = vec!["You are a helpful assistant.".to_string(),
-                ];
+                *self.history.lock().unwrap() = vec![Line {
+                    role: Role::System,
+                    content: "You are a helpful assistant.".to_string(),
+                }];
                 Task::none()
             }
 
@@ -337,11 +355,10 @@ impl App {
 
                 let task = match self.mode {
                     Mode::Chat => {
-                        // Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
-                        todo!();
+                        Task::stream(stream_chat(model, prompt, opts, self.history.clone()))
                     }
                 };
-
+                // Task::none()
                 Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
             }
 
@@ -353,6 +370,8 @@ impl App {
                 }
                 snap_to(LOG.clone(), RelativeOffset::END)
             }*/
+            
+            // Add to the last (added as empty) Line in self.lines.
             Message::LlmChunk(chunk) => {
                 if let Some(last) = self.lines.last_mut() {
                     if matches!(last.role, Role::Assistant) {
@@ -368,11 +387,9 @@ impl App {
 
             Message::LlmDone => {
                 self.waiting = false;
-
                 if self.mode == Mode::Chat {
                     // Here we used to trim.
                 }
-
                 snap_to(LOG.clone(), RelativeOffset::END)
             }
 
@@ -483,4 +500,24 @@ fn stream_chat(
     }
 }
 */
+fn stream_chat(
+    model: String,
+    user_prompt: String,
+    opts: ModelOptions,
+    history: Arc<Mutex<Vec<Line>>>,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+
+        let txt = vec!["Some", "words"];
+        for t in txt {
+            let chunk = t;
+            if !chunk.is_empty() {
+                yield Message::LlmChunk(chunk.to_string());
+                yield Message::LlmChunk(" ".to_string());
+            }
+        }
+
+        yield Message::LlmDone;
+    }
+}
 
