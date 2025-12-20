@@ -442,7 +442,7 @@ impl App {
     fn view(&self) -> Element<'_, Message> {
         // const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
-        const MY_SIZE:u32 = 24;
+        const MY_SIZE:u32 = 20;
 
         let transcript = self.lines.iter().fold(column![].spacing(6), |col, line| {
             let prefix = match line.role {
@@ -475,16 +475,16 @@ impl App {
             // text(format!("Max turns: {}", self.max_turns)),
             // slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
                 // .width(Length::Fixed(160.0)),
-            button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
+            // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
             button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
         ]
-        .spacing(12);
+        .spacing(12).align_y(iced::Alignment::Center);
 
         let input = text_input("Type and press Enter…", &self.draft)
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
-            .size(24)
+            .size(MY_SIZE)
             .font(MY_FONT)
             .width(Length::Fill);
 
