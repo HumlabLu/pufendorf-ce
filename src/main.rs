@@ -468,6 +468,9 @@ impl App {
                 self.waiting = false;
                 if self.mode == Mode::Chat {
                     // Here we used to trim.
+                    if let Some(last) = self.lines.last_mut() {
+                        last.content.push_str("\n");
+                    }
                     trace!("H: {:?}", self.history);
                 }
                 snap_to(LOG.clone(), RelativeOffset::END)
