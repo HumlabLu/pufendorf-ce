@@ -300,29 +300,6 @@ fn main() -> iced::Result {
 
     // ------------
 
-    /*
-    let file_path = Path::new("chatprompts.json");
-    // Read the entire content of the JSON file into a string
-    let content = fs::read_to_string(file_path).expect("no file");
-    // Print just to confirm file reading success
-    // println!("File Content:\n{}", content);
-    let data: Value = serde_json::from_str(&content).expect("data");
-    // println!("{}", &data);
-    let sysprompt = &data["system_prompt"]
-        .as_str()
-        .unwrap_or("You are Samuel Von Pufendorf.");
-    let mut sysprompt = sysprompt.to_string();
-    // dbg!(sysprompt);
-    if let Some(extras) = data["extra_info"].as_array() {
-        for extra in extras {
-            // println!("{}", extra);
-            sysprompt += extra.as_str().unwrap_or("");
-        }
-    }
-    */
-    // get_models();
-    // openai_stream();
-
     let corpus = [
         "The rabbit munched the orange carrot.",
         "The snake hugged the green lizard.",
@@ -488,15 +465,6 @@ impl App {
                 Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
             }
 
-            /*Message::LlmChunk(chunk) => {
-                if let Some(last) = self.lines.last_mut() {
-                    if matches!(last.role, Role::Assistant) {
-                        last.content.push_str(&chunk);
-                    }
-                }
-                snap_to(LOG.clone(), RelativeOffset::END)
-            }*/
-            
             // Add to the last (added as empty) Line in self.lines.
             Message::LlmChunk(chunk) => {
                 if let Some(last) = self.lines.last_mut() {
@@ -606,57 +574,6 @@ impl App {
             .into()
     }
 }
-/*
-fn stream_chat(
-    model: String,
-    user_prompt: String,
-    opts: ModelOptions,
-    history: Arc<Mutex<Vec<ChatMessage>>>,
-) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
-    stream! {
-        let ollama = Ollama::default();
-        let req = ChatMessageRequest::new(model, vec![ChatMessage::user(user_prompt)]).options(opts);
-
-        let mut s = match ollama.send_chat_messages_with_history_stream(history, req).await {
-            Ok(s) => s,
-            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
-        };
-
-        while let Some(item) = s.next().await {
-            match item {
-                Ok(res) => {
-                    let chunk = res.message.content;
-                    if !chunk.is_empty() { yield Message::LlmChunk(chunk); }
-                }
-                Err(_) => { yield Message::LlmErr("Ollama stream error".into()); yield Message::LlmDone; return; }
-            }
-        }
-
-        yield Message::LlmDone;
-    }
-}
-*/
-fn _stream_chat(
-    _model: String,
-    _user_prompt: String,
-    _opts: ModelOptions,
-    _history: Arc<Mutex<Vec<Line>>>,
-) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
-    stream! {
-
-        let txt = vec!["Some", "words"];
-        for t in txt {
-            let chunk = t;
-            if !chunk.is_empty() {
-                yield Message::LlmChunk(chunk.to_string());
-                yield Message::LlmChunk(" ".to_string());
-            }
-        }
-
-        yield Message::LlmDone;
-    }
-}
-
 
 // Function to convert Line to ChatMessage.
 // TODO let history use ChatMessage instead.
@@ -830,12 +747,14 @@ fn stream_chat_oai(
             }
         }
 
-        let mut h = history.lock().unwrap();
-        info!("Q: {}", user_prompt);
-        h.push(Line { role: Role::User, content: user_prompt });
-        // println!("Pusing: {}", &assistant_acc);
-        info!("A: {}", assistant_acc);
-        h.push(Line { role: Role::Assistant, content: assistant_acc });
+        {
+            let mut h = history.lock().unwrap();
+            info!("Q: {}", user_prompt);
+            h.push(Line { role: Role::User, content: user_prompt });
+            // println!("Pusing: {}", &assistant_acc);
+            info!("A: {}", assistant_acc);
+            h.push(Line { role: Role::Assistant, content: assistant_acc });
+        }
 
         yield Message::LlmDone;
     }
