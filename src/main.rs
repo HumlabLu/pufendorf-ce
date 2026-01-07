@@ -32,6 +32,9 @@ use clap::Parser;
 use std::io::Write;
 use std::str::FromStr;
 
+mod lance;
+use lance::{read_file_to_vec, append_documents};
+
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 
@@ -211,7 +214,7 @@ async fn openai_stream() {
     }
 }
 
-pub fn main() -> iced::Result {
+fn main() -> iced::Result {
     let cli = Cli::parse();
 
     // This switches off logging from html5 and other crates.
