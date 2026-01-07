@@ -175,7 +175,7 @@ struct App {
 
 
 // #[tokio::main]
-async fn openai_stream() {
+async fn _openai_stream() {
     let client = Client::new_from_env();
 
     let parameters = ChatCompletionParametersBuilder::default()
@@ -285,8 +285,8 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
-    // let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
-
+    // code moved to streaming function.
+    
     let schema = Arc::new(Schema::new(vec![
         Field::new("id", DataType::Int32, false),
         Field::new("abstract", DataType::Utf8, false),
@@ -719,7 +719,9 @@ fn stream_chat_oai(
         }
 
 
-
+        info!("Searching context.");
+        let mut context = "Use the following info to answer the question.\n".to_string();
+        
         // insert Db/RAG here?
         let mut embedder = TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
@@ -751,34 +753,40 @@ fn stream_chat_oai(
                 .try_collect()
                 .await.expect("err");
             for b in &results {
-                    let text_idx = b.schema().index_of("text").expect("err");
-                    let dist_idx = b.schema().index_of("_distance").expect("err");
+                let text_idx = b.schema().index_of("text").expect("err");
+                let dist_idx = b.schema().index_of("_distance").expect("err");
 
-                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
-                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+                let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
-                    for i in 0..b.num_rows() {
+                for i in 0..b.num_rows() {
+                    let dist = dists.value(i);
+                    if dist < 1.0 {
                         let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
-                        let dist = dists.value(i);
-                        println!("{dist:.4}  {text}");
+                        debug!("{dist:.3}  {text}");
+                        context += text;
                     }
                 }
-            };
-
+            }
+        };
 
         let mut messages: Vec<ChatMessage> = {
             let h = history.lock().unwrap();
             h.iter().map(line_to_chat_message).collect()
         };
+        // println!("{:?}", messages);
 
-        // or here.
-        
-        info!("Searching context.");
+        // messages.push(context_message);
+        messages.push(ChatMessage::User {
+            content: ChatMessageContent::Text(context),
+            name: None,
+        });
         
         messages.push(ChatMessage::User {
             content: ChatMessageContent::Text(user_prompt.clone()),
             name: None,
         });
+        info!("{:?}", messages);
 
         let max_tokens = u32::try_from(opts.num_predict).ok();
         let params = match ChatCompletionParametersBuilder::default()
@@ -790,7 +798,10 @@ fn stream_chat_oai(
             .build()
         {
             Ok(p) => p,
-            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            Err(e) => {
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone; return;
+            }
         };
 
         let stream0 = match client.chat().create_stream(params).await {
