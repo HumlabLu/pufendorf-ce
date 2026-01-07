@@ -57,6 +57,9 @@ struct Cli {
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
 
+    #[arg(short, long, help = "Font size.", default_value_t = 20)]
+    fontsize: u32,
+
     #[arg(short, long, help = "Table name.")]
     tablename: Option<String>,
 }
@@ -242,6 +245,7 @@ fn main() -> iced::Result {
 
     // ------------
 
+    // application(move |_| App::new(cli.fontsize), App::update, ..)
     iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
         .theme(theme)
