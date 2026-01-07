@@ -699,28 +699,30 @@ fn stream_chat_oai(
         let cats = &result.results[0].category_scores;
         let flagged = result.results[0].flagged;
         // println!("Mod: {:?}", cats);
-        /*
+        
+        // The moderator is very strict, we check scores.
         let mut flagged = false;
         let v = serde_json::to_value(&cats).unwrap();
         if let Value::Object(map) = v {
             for (k, v) in map {
                 let score = v.as_f64().unwrap();
-                println!("{k}: {score}");
                 if score > 0.6 {
+                    debug!("{k}: {score}");
                     flagged = true;
                 }
             }
-        }*/
+        }
+        
         if flagged {
-            println!("Mod: {:?}", cats);
+            debug!("Mod: {:?}", cats);
             yield Message::LlmChunk("Please ask another question!".to_string());
             yield Message::LlmDone;
             return;
         }
 
 
-        info!("Searching context.");
-        let mut context = "Use the following info to answer the question.\n".to_string();
+        debug!("Searching context.");
+        let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // insert Db/RAG here?
         let mut embedder = TextEmbedding::try_new(
@@ -786,7 +788,7 @@ fn stream_chat_oai(
             content: ChatMessageContent::Text(user_prompt.clone()),
             name: None,
         });
-        info!("{:?}", messages);
+        debug!("{:?}", messages);
 
         let max_tokens = u32::try_from(opts.num_predict).ok();
         let params = match ChatCompletionParametersBuilder::default()
