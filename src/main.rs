@@ -170,6 +170,8 @@ struct App {
     extra_info: String,
 
     db: Option<lancedb::Connection>,
+
+    font_size: u32,
 }
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
@@ -303,6 +305,8 @@ impl App {
             extra_info: "The year is 1667".into(), // Not used.
 
             db: None,
+
+            font_size: 20,
         }
     }
 
@@ -437,7 +441,7 @@ impl App {
     fn view(&self) -> Element<'_, Message> {
         // const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
-        const MY_SIZE: u32 = 20;
+        // const MY_SIZE: u32 = 20;
 
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
@@ -445,7 +449,7 @@ impl App {
                 Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(MY_SIZE).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
+            col.push(text(format!("{prefix}{}", line.content)).size(self.font_size).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
         });
 
         let top = container(
@@ -479,7 +483,7 @@ impl App {
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
-            .size(MY_SIZE)
+            .size(self.font_size)
             .font(MY_FONT)
             .width(Length::Fill);
 
