@@ -15,7 +15,6 @@ use std::{
 };
 use async_stream::stream;
 use tokio_stream::StreamExt;
-use bm25::{Document, Language, SearchEngineBuilder, SearchResult};
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
@@ -299,21 +298,6 @@ fn main() -> iced::Result {
     ]));
 
     // ------------
-
-    let corpus = [
-        "The rabbit munched the orange carrot.",
-        "The snake hugged the green lizard.",
-        "The hedgehog impaled the orange orange.",
-        "The squirrel buried the brown nut.",
-    ];
-
-    let search_engine = SearchEngineBuilder::<u32>::with_corpus(Language::English, corpus).build();
-
-    let limit = 3;
-    let search_results = search_engine.search("orange", limit);
-    debug!("{:?}", search_results);
-    let search_results = search_engine.search("When were you born?", limit);
-    debug!("{:?}", search_results);
 
     iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
