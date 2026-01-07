@@ -776,9 +776,7 @@ fn stream_chat_oai(
             let h = history.lock().unwrap();
             h.iter().map(line_to_chat_message).collect()
         };
-        // println!("{:?}", messages);
 
-        // messages.push(context_message);
         messages.push(ChatMessage::User {
             content: ChatMessageContent::Text(context),
             name: None,
@@ -832,14 +830,12 @@ fn stream_chat_oai(
             }
         }
 
-        {
-            let mut h = history.lock().unwrap();
-            info!("Q: {}", user_prompt);
-            h.push(Line { role: Role::User, content: user_prompt });
-            // println!("Pusing: {}", &assistant_acc);
-            info!("A: {}", assistant_acc);
-            h.push(Line { role: Role::Assistant, content: assistant_acc });
-        }
+        let mut h = history.lock().unwrap();
+        info!("Q: {}", user_prompt);
+        h.push(Line { role: Role::User, content: user_prompt });
+        // println!("Pusing: {}", &assistant_acc);
+        info!("A: {}", assistant_acc);
+        h.push(Line { role: Role::Assistant, content: assistant_acc });
 
         yield Message::LlmDone;
     }
