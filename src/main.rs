@@ -2,7 +2,7 @@ use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
-use log::{debug, error, info, trace, LevelFilter};
+use log::{debug, warn, error, info, trace, LevelFilter};
 use flexi_logger::{DeferredNow, Record};
 use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
@@ -132,7 +132,7 @@ struct Line {
     content: String,
 }
 
-// Messages for iced GUI.
+// Event messages for iced GUI.
 #[derive(Debug, Clone)]
 enum Message {
     DraftChanged(String),
@@ -195,7 +195,7 @@ fn main() -> iced::Result {
                 .suffix("log"),
         )
         .append()
-        .duplicate_to_stderr(Duplicate::All)
+        .duplicate_to_stderr(Duplicate::Info) // was ::All
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
@@ -334,8 +334,8 @@ impl App {
             }
 
             Message::ResetParams => {
-                self.temperature = 0.7;
-                self.num_predict = 512;
+                self.temperature = 0.1;
+                self.num_predict = 1024;
                 self.max_turns = 20;
                 Task::none()
             }
@@ -437,7 +437,7 @@ impl App {
     fn view(&self) -> Element<'_, Message> {
         // const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
-        const MY_SIZE:u32 = 20;
+        const MY_SIZE: u32 = 20;
 
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
