@@ -34,6 +34,15 @@ use std::str::FromStr;
 
 mod lance;
 use lance::{read_file_to_vec, append_documents};
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use arrow_schema::{DataType, Field, Schema};
+use arrow_array::{
+    types::Float32Type, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator,
+};
+use lancedb::query::QueryBase;
+use lancedb::query::ExecutableQuery;
+use iced::futures::TryStreamExt;
+use arrow_array::{Float32Array, StringArray, Array};
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -45,6 +54,12 @@ struct Cli {
     /// error, warn, info, debug, or trace
     #[arg(short, long, default_value = "info")]
     log_level: String,
+
+    #[arg(short, long, help = "DB name.")]
+    dbname: Option<String>,
+
+    #[arg(short, long, help = "Table name.")]
+    tablename: Option<String>,
 }
 
 fn log_format(
@@ -154,10 +169,12 @@ struct App {
 
     system_prompt: String,
     extra_info: String,
+
+    db: Option<lancedb::Connection>,
 }
 
 
-#[tokio::main]
+// #[tokio::main]
 async fn openai_stream() {
     let client = Client::new_from_env();
 
@@ -214,6 +231,11 @@ async fn openai_stream() {
     }
 }
 
+async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
+    lancedb::connect(&db_name).execute().await
+}
+
+// #[tokio::main]
 fn main() -> iced::Result {
     let cli = Cli::parse();
 
@@ -238,6 +260,46 @@ fn main() -> iced::Result {
         .start().expect("Logging?");
     info!("Start");
     
+    // ------------ New Db stuff
+    
+    // Embedding model (downloads once, then runs locally).
+    let mut embedder = TextEmbedding::try_new(
+        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+    ).expect("No embedding model.");
+
+    // Embedder, plus determine dimension.
+    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
+    let dim = one_embeddings[0].len() as i32;
+    info!("Embedding dim {}", dim);
+
+    // My DB. Created if it doesn't exist.
+    let db_name = match cli.dbname {
+        Some(dbn) => dbn,
+        None => "data/lancedb_fastembed".to_string()
+    };
+    info!("Database: {db_name}");
+
+    let table_name = match cli.tablename {
+        Some(tbln) => tbln,
+        None => "docs".to_string()
+    };
+    info!("Table name: {table_name}");
+
+    // let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("abstract", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+            false,
+        ),
+    ]));
+
+    // ------------
+
     /*
     let file_path = Path::new("chatprompts.json");
     // Read the entire content of the JSON file into a string
@@ -316,26 +378,6 @@ impl App {
             }]
         ));
 
-        /*
-        pub enum Gpt5Model {
-            #[serde(rename = "gpt-5")]
-            Gpt5,
-            #[serde(rename = "gpt-5-mini")]
-            Gpt5Mini,
-            #[serde(rename = "gpt-5-nano")]
-            Gpt5Nano,
-        }
-        #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-        pub enum Gpt4Model {
-            #[serde(rename = "gpt-4.1")]
-            Gpt41,
-            #[serde(rename = "gpt-4o")]
-            Gpt4O,
-            #[serde(rename = "gpt-4o-audio-preview")]
-            Gpt4OAudioPreview,
-        }
-        https://community.openai.com/t/is-anyone-experiencing-issues-with-gpt-5-nano-returning-no-output/1351246
-        */
         Self {
             // gpt-5-nano
             model: "gpt-4.1-nano".into(), //Gpt5Model::Gpt5Nano.to_string()
@@ -357,6 +399,8 @@ impl App {
 
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
+
+            db: None,
         }
     }
 
@@ -673,13 +717,64 @@ fn stream_chat_oai(
             yield Message::LlmDone;
             return;
         }
-        // ----
+
+
+
+        // insert Db/RAG here?
+        let mut embedder = TextEmbedding::try_new(
+            InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+        ).expect("No embedding model.");
+        let db_name = "data/lancedb_fastembed";
+        let table_name = "docs".to_string();
+        let dim = 384;
+        let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("abstract", DataType::Utf8, false),
+            Field::new("text", DataType::Utf8, false),
+            Field::new(
+                "vector",
+                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+                false,
+            ),
+        ]));
+        let q = embedder.embed(vec![&user_prompt], None).expect("err");
+        let qv = &q[0];
+
+        if let Ok(ref table) = db.open_table(&table_name).execute().await {
+            let results: Vec<RecordBatch> = table
+                .query()
+                .nearest_to(qv.as_slice()).expect("err")
+                .limit(12)
+                .execute()
+                .await.expect("err")
+                .try_collect()
+                .await.expect("err");
+            for b in &results {
+                    let text_idx = b.schema().index_of("text").expect("err");
+                    let dist_idx = b.schema().index_of("_distance").expect("err");
+
+                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+                    for i in 0..b.num_rows() {
+                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+                        let dist = dists.value(i);
+                        println!("{dist:.4}  {text}");
+                    }
+                }
+            };
+
 
         let mut messages: Vec<ChatMessage> = {
             let h = history.lock().unwrap();
             h.iter().map(line_to_chat_message).collect()
         };
 
+        // or here.
+        
+        info!("Searching context.");
+        
         messages.push(ChatMessage::User {
             content: ChatMessageContent::Text(user_prompt.clone()),
             name: None,
