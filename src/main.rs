@@ -175,15 +175,15 @@ struct App {
     system_prompt: String,
     extra_info: String,
 
-    db: Option<lancedb::Connection>,
 
     font_size: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 struct AppConfig {
     db_path: String,
     model: String,
+    db: Option<lancedb::Connection>,
 }
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
@@ -242,8 +242,15 @@ fn main() -> iced::Result {
     // create_database(db_name);
     // Should return Db, schema, ...
     let rt = Runtime::new().unwrap();
-    rt.block_on(create_database(db_name));
-
+    rt.block_on(create_database(db_name.clone()));
+    let db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
+        Ok(db) => Some(db),
+        Err(e) => {
+            error!("DB Error!");
+            None
+        }
+    };
+    
     // code moved to streaming function.
     
     let _schema = Arc::new(Schema::new(vec![
@@ -259,12 +266,13 @@ fn main() -> iced::Result {
 
     // ------------
 
+    // Have DB connexion here?
     let config = AppConfig {
         db_path: "data/pufendorf".into(),
         model: "gpt-4o-mini".into(),
+        db: db,
     };
 
-    // application(move |_| App::new(cli.fontsize), App::update, ..)
     iced::application(
         move || App::new(config.clone()),
         App::update,
@@ -333,8 +341,6 @@ impl App {
 
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
-
-            db: None,
 
             font_size: 20,
         }, Task::none())
@@ -473,6 +479,8 @@ impl App {
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
         // const MY_SIZE: u32 = 20;
 
+        // info!("{:?}", self.config.db_path);
+        
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",

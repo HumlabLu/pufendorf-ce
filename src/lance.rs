@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-use log::{debug, error, info, trace};
+use log::{debug, warn, info, trace};
 
 use arrow_array::{
   ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray,
@@ -176,8 +176,9 @@ where
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
 
+    // Return the table?
     if let Ok(ref _table) = db.open_table(&table_name).execute().await {
-        error!("Table already exists: {}.", &table_name);
+        info!("Table {} already exists, skipping.", &table_name);
         return;
     };
 
