@@ -43,6 +43,9 @@ use iced::futures::TryStreamExt;
 use arrow_array::{Float32Array, StringArray, Array};
 use tokio::runtime::Runtime;
 
+mod structs;
+use structs::*;
+
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 
@@ -91,99 +94,6 @@ fn theme(_: &App) -> Theme {
     Theme::TokyoNight //GruvboxLight //Dark
 }
 
-// ----
-// Struct for model options like temp &c.
-#[derive(Debug, Default, Clone)]
-pub struct ModelOptions {
-    pub temperature: f32,
-    pub num_predict: i32,
-}
-impl ModelOptions {
-    pub fn temperature(mut self, temperature: f32) -> Self {
-        self.temperature = temperature;
-        self
-    }
-
-    pub fn num_predict(mut self, num_predict: i32) -> Self {
-        self.num_predict = num_predict;
-        self
-    }
-}
-// ----
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Mode {
-    Chat,
-}
-impl fmt::Display for Mode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Mode::Chat => write!(f, "Chat (history)"),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Role {
-    User,
-    Assistant,
-    System,
-}
-#[derive(Debug, Clone)]
-struct Line {
-    role: Role,
-    content: String,
-}
-
-// Event messages for iced GUI.
-#[derive(Debug, Clone)]
-enum Message {
-    DraftChanged(String),
-    Submit,
-    ModeChanged(Mode),
-
-    TemperatureChanged(f32),
-    NumPredictChanged(i32),
-    MaxTurnsChanged(u16),
-
-    ResetParams,
-    ClearAll,
-
-    LlmChunk(String),
-    LlmDone,
-    LlmErr(String),
-}
-
-// "Global" data for the iced app.
-struct App {
-    config: AppConfig,
-    
-    model: String,
-    mode: Mode,
-
-    temperature: f32,
-    num_predict: i32,
-    max_turns: u16,
-
-    draft: String, // User input
-    lines: Vec<Line>,
-    waiting: bool,
-
-    history: Arc<Mutex<Vec<Line>>>,
-
-    system_prompt: String,
-    extra_info: String,
-
-    db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
-
-    font_size: u32,
-}
-
-#[derive(Clone)]
-struct AppConfig {
-    db_path: String,
-    model: String,
-}
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
     lancedb::connect(&db_name).execute().await
