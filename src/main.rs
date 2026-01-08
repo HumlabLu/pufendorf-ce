@@ -151,9 +151,10 @@ fn main() -> iced::Result {
     // Should return Db, schema, ...
     let rt = Runtime::new().unwrap();
     rt.block_on(create_database(db_name.clone()));
-    let db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
+    let _db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
+
         Ok(db) => Some(db),
-        Err(e) => {
+        Err(_e) => {
             error!("DB Error!");
             None
         }
@@ -505,7 +506,7 @@ fn stream_chat_oai(
                 .unwrap();
         let result = client.moderations().create(parameters).await.unwrap();
         let cats = &result.results[0].category_scores;
-        let flagged = result.results[0].flagged;
+        let _flagged = result.results[0].flagged;
         // println!("Mod: {:?}", cats);
         
         // The moderator is very strict, we check scores.
@@ -539,11 +540,11 @@ fn stream_chat_oai(
         let table_name = "docs".to_string();
         let dim = 384;
         let db: lancedb::Connection = {
-            let mut guard = dbc.lock().unwrap();
+            let guard = dbc.lock().unwrap();
             guard.clone().take().expect("Expected a database connection!")
         };
 
-        let schema = Arc::new(Schema::new(vec![
+        let _schema = Arc::new(Schema::new(vec![
             Field::new("id", DataType::Int32, false),
             Field::new("abstract", DataType::Utf8, false),
             Field::new("text", DataType::Utf8, false),

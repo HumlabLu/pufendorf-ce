@@ -4,24 +4,24 @@ use anyhow::{Result, bail};
 // use arrow_array::{RecordBatch, RecordBatchIterator, ArrayRef, Int32Array, StringArray};
 // use arrow_schema::{Schema, Field, DataType};
 
-use lancedb::table::{AddDataMode, NewColumnTransform, ColumnAlteration};
+use lancedb::table::{AddDataMode};
 
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-use log::{debug, warn, info, trace};
+use log::{debug, info, trace};
 
 use arrow_array::{
-  ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray,
-  new_null_array,
+  ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray
+  
 };
 use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 
-pub async fn append_documents(
+pub async fn _append_documents(
     table: &lancedb::table::Table,
     embedder: &mut fastembed::TextEmbedding,
     new_docs: Vec<String>,
@@ -80,7 +80,7 @@ pub async fn append_documents(
     Ok(())
 }
 
-pub async fn open_existing_table(db_uri: &str, table_name: &str) -> Result<lancedb::table::Table> {
+pub async fn _open_existing_table(db_uri: &str, table_name: &str) -> Result<lancedb::table::Table> {
     debug!("open_existing_table(...).");
 
     let db = lancedb::connect(db_uri).execute().await?;
@@ -94,7 +94,7 @@ pub async fn open_existing_table(db_uri: &str, table_name: &str) -> Result<lance
 }
 
 
-fn make_append_batch(next_id0: i32, rows: &[(&str, &str)]) -> Result<(Arc<Schema>, RecordBatch)> {
+fn _make_append_batch(next_id0: i32, rows: &[(&str, &str)]) -> Result<(Arc<Schema>, RecordBatch)> {
     // This schema must match the *current* table schema (names + types + nullability).
     // In real code, fetch table.schema().await? and build arrays in that order.
     let schema = Arc::new(Schema::new(vec![
