@@ -18,6 +18,8 @@ use arrow_array::{
 };
 use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use lancedb::index::Index;
 
 pub async fn append_documents(
     table: &lancedb::table::Table,
@@ -139,5 +141,73 @@ where
     }
     info!("Doc count: {}", docs.len());
     docs
+}
+
+pub async fn create_database<P>(filename: P) 
+where
+    P: AsRef<Path>,
+{
+    info!("Creating database.");
+
+    // Embedding model (downloads once, then runs locally).
+    let mut embedder = TextEmbedding::try_new(
+        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+    ).expect("No embedding model.");
+
+    // Embedder, plus determine dimension.
+    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
+    let dim = one_embeddings[0].len() as i32;
+    info!("Embedding dim {}", dim);
+
+    let db_name = "data/lancedb_fastembed";
+    let table_name = "docs".to_string();
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("abstract", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+            false,
+        ),
+    ]));
+
+    info!("Database: {db_name}");
+    info!("Table name: {table_name}");
+
+    if let Ok(ref _table) = db.open_table(&table_name).execute().await {
+        error!("Table already exists: {}.", &table_name);
+        return;
+    };
+
+    // Create tabel/data etc
+    let docs = read_file_to_vec(&filename);
+
+    let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
+
+    let ids = Arc::new(Int32Array::from_iter_values(0..(docs.len() as i32)));
+    let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
+    let texts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
+    let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+        doc_embeddings
+            .iter()
+            .map(|v| Some(v.iter().copied().map(Some).collect::<Vec<_>>())),
+        dim,
+    ));
+
+    let batch = RecordBatch::try_new(schema.clone(), vec![ids, abstracts, texts, vectors]).unwrap();
+    let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
+
+    db.create_table(&table_name, Box::new(batches)).execute().await.unwrap();
+
+    let t = db.open_table(&table_name).execute().await.unwrap();
+
+    let n = docs.len();
+    if n >= 256 {
+        t.create_index(&["vector"], Index::Auto).execute().await.unwrap();
+    } else {
+        info!("Skipping vector index: only {n} rows (need >= 256 for PQ training)");
+    }
 }
 
