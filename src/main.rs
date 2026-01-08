@@ -267,7 +267,7 @@ fn main() -> iced::Result {
 
     // Have DB connexion here?
     let config = AppConfig {
-        db_path: "data/pufendorf".into(),
+        db_path: "data/lancedb_fastembed".into(),
         model: "gpt-4o-mini".into(),
     };
 
@@ -321,10 +321,11 @@ impl App {
         let dbc: Option<lancedb::Connection> = match rt.block_on(connect_db(config.db_path.clone())) {
             Ok(db) => Some(db),
             Err(e) => {
-                error!("DB Error!");
+                error!("DB Error! {e}");
                 None
             }
         };
+        // Probably does not have to be an Arc/Mutex.
         let db_connexion = Arc::new(Mutex::new(dbc));
 
         (Self {
@@ -351,7 +352,7 @@ impl App {
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
 
-            db_connexion,
+            db_connexion: db_connexion,
             
             font_size: 20,
         }, Task::none())
@@ -618,7 +619,6 @@ fn stream_chat_oai(
             return;
         }
 
-
         debug!("Searching context.");
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
@@ -630,7 +630,7 @@ fn stream_chat_oai(
         let dim = 384;
         let db: lancedb::Connection = {
             let mut guard = dbc.lock().unwrap();
-            guard.take().expect("Expected a database connection!")
+            guard.clone().take().expect("Expected a database connection!")
         };
 
         let schema = Arc::new(Schema::new(vec![
@@ -664,10 +664,12 @@ fn stream_chat_oai(
 
                 for i in 0..b.num_rows() {
                     let dist = dists.value(i);
+                    let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
                     if dist < 1.0 {
-                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
-                        debug!("{dist:.3}  {text}");
+                        debug!("{dist:.3} * {text}");
                         context += text;
+                    } else {
+                        debug!("{dist:.3}   {text}");
                     }
                 }
             }
