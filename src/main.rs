@@ -2,11 +2,11 @@ use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
-use log::{debug, warn, error, info, trace, LevelFilter};
+use log::{debug, error, info, trace, LevelFilter};
 use flexi_logger::{DeferredNow, Record};
 use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
-    widget::{button, column, container, pick_list, row, scrollable, slider, text, text_input},
+    widget::{button, column, container, row, scrollable, slider, text, text_input},
     Element, Length, Settings, Task, Theme,
 };
 use std::{
@@ -20,7 +20,6 @@ use std::fs;
 use std::path::Path;
 use openai_dive::v1::api::Client;
 use openai_dive::v1::endpoints::chat::RoleTrackingStream;
-use openai_dive::v1::models::Gpt5Model;
 use openai_dive::v1::resources::chat::{
     ChatCompletionParametersBuilder, ChatCompletionResponseFormat, ChatMessage, ChatMessageContent,
     DeltaChatMessage,
@@ -175,6 +174,7 @@ struct App {
     system_prompt: String,
     extra_info: String,
 
+    db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
 
     font_size: u32,
 }
@@ -183,7 +183,6 @@ struct App {
 struct AppConfig {
     db_path: String,
     model: String,
-    db: Option<lancedb::Connection>,
 }
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
@@ -270,7 +269,6 @@ fn main() -> iced::Result {
     let config = AppConfig {
         db_path: "data/pufendorf".into(),
         model: "gpt-4o-mini".into(),
-        db: db,
     };
 
     iced::application(
@@ -318,11 +316,22 @@ impl App {
             }]
         ));
 
+        // Alternative way? which is best?
+        let rt = Runtime::new().unwrap();
+        let dbc: Option<lancedb::Connection> = match rt.block_on(connect_db(config.db_path.clone())) {
+            Ok(db) => Some(db),
+            Err(e) => {
+                error!("DB Error!");
+                None
+            }
+        };
+        let db_connexion = Arc::new(Mutex::new(dbc));
+
         (Self {
             config, 
 
             // gpt-5-nano
-            model: "gpt-4.1-nano".into(), //Gpt5Model::Gpt5Nano.to_string()
+            model: "gpt-4.1-nano".into(),
             mode: Mode::Chat,
 
             temperature: 0.05,
@@ -342,6 +351,8 @@ impl App {
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
 
+            db_connexion,
+            
             font_size: 20,
         }, Task::none())
     }
@@ -423,7 +434,9 @@ impl App {
 
                 let task = match self.mode {
                     Mode::Chat => {
-                        Task::stream(stream_chat_oai(model, prompt, opts, self.history.clone()))
+                        Task::stream(
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone())
+                        )
                     }
                 };
                 // Task::none()
@@ -566,6 +579,7 @@ fn stream_chat_oai(
     user_prompt: String,
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
+    dbc: Arc<Mutex<Option<lancedb::Connection>>>,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
@@ -612,10 +626,13 @@ fn stream_chat_oai(
         let mut embedder = TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
         ).expect("No embedding model.");
-        let db_name = "data/lancedb_fastembed";
         let table_name = "docs".to_string();
         let dim = 384;
-        let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+        let db: lancedb::Connection = {
+            let mut guard = dbc.lock().unwrap();
+            guard.take().expect("Expected a database connection!")
+        };
+
         let schema = Arc::new(Schema::new(vec![
             Field::new("id", DataType::Int32, false),
             Field::new("abstract", DataType::Utf8, false),
