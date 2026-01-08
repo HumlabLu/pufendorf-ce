@@ -624,7 +624,8 @@ fn stream_chat_oai(
         
         // insert Db/RAG here?
         let mut embedder = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+            InitOptions::new(EmbeddingModel::AllMiniLML6V2)
+                .with_show_download_progress(true),
         ).expect("No embedding model.");
         let table_name = "docs".to_string();
         let dim = 384;
