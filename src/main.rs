@@ -32,7 +32,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{read_file_to_vec, append_documents};
+use lance::{read_file_to_vec, append_documents, create_database};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
@@ -42,6 +42,7 @@ use lancedb::query::QueryBase;
 use lancedb::query::ExecutableQuery;
 use iced::futures::TryStreamExt;
 use arrow_array::{Float32Array, StringArray, Array};
+use tokio::runtime::Runtime;
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -156,6 +157,8 @@ enum Message {
 
 // "Global" data for the iced app.
 struct App {
+    config: AppConfig,
+    
     model: String,
     mode: Mode,
 
@@ -175,6 +178,12 @@ struct App {
     db: Option<lancedb::Connection>,
 
     font_size: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AppConfig {
+    db_path: String,
+    model: String,
 }
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
@@ -230,9 +239,14 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
+    // create_database(db_name);
+    // Should return Db, schema, ...
+    let rt = Runtime::new().unwrap();
+    rt.block_on(create_database(db_name));
+
     // code moved to streaming function.
     
-    let schema = Arc::new(Schema::new(vec![
+    let _schema = Arc::new(Schema::new(vec![
         Field::new("id", DataType::Int32, false),
         Field::new("abstract", DataType::Utf8, false),
         Field::new("text", DataType::Utf8, false),
@@ -245,8 +259,18 @@ fn main() -> iced::Result {
 
     // ------------
 
+    let config = AppConfig {
+        db_path: "data/pufendorf".into(),
+        model: "gpt-4o-mini".into(),
+    };
+
     // application(move |_| App::new(cli.fontsize), App::update, ..)
-    iced::application(App::new, App::update, App::view)
+    iced::application(
+        move || App::new(config.clone()),
+        App::update,
+        App::view,
+        )
+        // iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
         .theme(theme)
         .settings(Settings::default())
@@ -260,7 +284,7 @@ fn main() -> iced::Result {
 }
 
 impl App {
-    fn new() -> Self {
+    fn new(config: AppConfig) -> (Self, Task<Message>) {
         // Read the prompts from a json file.
         // Should contain a system_prompt and extra_info.
         let file_path = Path::new("assets/chatprompts.json");
@@ -286,7 +310,9 @@ impl App {
             }]
         ));
 
-        Self {
+        (Self {
+            config, 
+
             // gpt-5-nano
             model: "gpt-4.1-nano".into(), //Gpt5Model::Gpt5Nano.to_string()
             mode: Mode::Chat,
@@ -311,7 +337,7 @@ impl App {
             db: None,
 
             font_size: 20,
-        }
+        }, Task::none())
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
