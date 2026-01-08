@@ -10,7 +10,6 @@ use iced::{
     Element, Length, Settings, Task, Theme,
 };
 use std::{
-    fmt,
     sync::{Arc, LazyLock, Mutex},
 };
 use async_stream::stream;
@@ -31,11 +30,11 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{read_file_to_vec, append_documents, create_database};
+use lance::{create_database};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
-    types::Float32Type, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator,
+    RecordBatch
 };
 use lancedb::query::QueryBase;
 use lancedb::query::ExecutableQuery;
