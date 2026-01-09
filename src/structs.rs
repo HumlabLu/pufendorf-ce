@@ -21,6 +21,7 @@ impl ModelOptions {
     }
 }
 
+// Not used anymore... make this OpenAI/Ollama?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Chat,
@@ -54,7 +55,6 @@ pub enum Message {
 
     TemperatureChanged(f32),
     NumPredictChanged(i32),
-    MaxTurnsChanged(u16),
 
     ResetParams,
     ClearAll,
@@ -73,7 +73,6 @@ pub struct App {
 
     pub temperature: f32,
     pub num_predict: i32,
-    pub max_turns: u16,
 
     pub draft: String, // User input
     pub lines: Vec<Line>,

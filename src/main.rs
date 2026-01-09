@@ -270,9 +270,8 @@ impl App {
 
             temperature: 0.05,
             num_predict: 1024,
-            max_turns: 20,
 
-            // Draft is user input, lines are everyting in the output pane.
+            // Draft is user input, lines are the text in the output pane.
             draft: String::new(),
             lines: vec![Line {
                 role: Role::System,
@@ -312,15 +311,9 @@ impl App {
                 Task::none()
             }
 
-            Message::MaxTurnsChanged(n) => {
-                self.max_turns = n;
-                Task::none()
-            }
-
             Message::ResetParams => {
                 self.temperature = 0.1;
                 self.num_predict = 1024;
-                self.max_turns = 20;
                 Task::none()
             }
 
@@ -455,9 +448,6 @@ impl App {
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::FillPortion(1))
                 .step(12),
-            // text(format!("Max turns: {}", self.max_turns)),
-            // slider(1u16..=100u16, self.max_turns, Message::MaxTurnsChanged)
-                // .width(Length::Fixed(160.0)),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
             button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
         ]
