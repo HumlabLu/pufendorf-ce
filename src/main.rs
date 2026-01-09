@@ -159,22 +159,20 @@ fn main() -> iced::Result {
 
     if let Some(ref filename) = cli.filename {
         info!("Filename {filename}.");
+        /*
         let chunks = chunk_file_txt(filename, 512);
         if let Ok(lines) = chunks {
             for line in lines {
                 println!("{:?}", line);
             }
-        }
-        // create_database(filename).await.unwrap();
-        
+        }*/
+        let rt = Runtime::new().unwrap();
+        let _ = rt.block_on(create_database(filename));
+       
     }
 
-    // create_database(db_name);
-    // Should return Db, schema, ...
     let rt = Runtime::new().unwrap();
-    let _ = rt.block_on(create_database(db_name.clone()));
     let _db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
-
         Ok(db) => Some(db),
         Err(_e) => {
             error!("DB Error!");

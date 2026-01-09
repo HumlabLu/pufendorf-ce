@@ -145,7 +145,8 @@ where
     docs
 }
 
-// The db_name is hardcoded!
+// The db_name and table_name are hardcoded!
+// Filename argument reads the data for a new database.
 pub async fn create_database<P>(filename: P) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
@@ -158,8 +159,8 @@ where
     ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
-    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
-    let dim = one_embeddings[0].len() as i32;
+    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
+    let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
 
     let db_name = "data/lancedb_fastembed";
@@ -186,9 +187,8 @@ where
     };
 
     // Create tabel/data etc.
-    // FOXME use the chunks version here.
     // let docs = read_file_to_vec(&filename);
-    let chunks = chunk_file_txt(&filename, 512);
+    let chunks = chunk_file_txt(&filename, 128);
     let docs = match chunks {
         Ok(d) => d,
         Err(e) => {
@@ -218,6 +218,7 @@ where
 
     let n = docs.len();
     if n >= 256 {
+        info!("Creating vector index.");
         t.create_index(&["vector"], Index::Auto).execute().await.unwrap();
     } else {
         info!("Skipping vector index: only {n} rows (need >= 256 for PQ training)");
