@@ -199,6 +199,7 @@ fn main() -> iced::Result {
     let config = AppConfig {
         db_path: "data/lancedb_fastembed".into(),
         model: "gpt-4o-mini".into(),
+        fontsize: cli.fontsize,
     };
 
 
@@ -286,7 +287,6 @@ impl App {
 
             db_connexion: db_connexion,
             
-            font_size: 20,
         }, Task::none())
     }
 
@@ -433,7 +433,7 @@ impl App {
                 Role::Assistant => "Samuel: ",
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(self.font_size).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
+            col.push(text(format!("{prefix}{}", line.content)).size(self.config.fontsize).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
         });
 
         let top = container(
@@ -463,11 +463,11 @@ impl App {
         ]
         .spacing(12).align_y(iced::Alignment::Center).padding(10);
 
-        let input = text_input("Type your question…", &self.draft)
+        let input = text_input("Ask your question…", &self.draft)
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
-            .size(self.font_size)
+            .size(self.config.fontsize)
             .font(MY_FONT)
             .width(Length::Fill);
 

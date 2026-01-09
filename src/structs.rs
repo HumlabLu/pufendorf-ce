@@ -85,12 +85,11 @@ pub struct App {
     pub extra_info: String,
 
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
-
-    pub font_size: u32,
 }
 
 #[derive(Clone)]
 pub struct AppConfig {
     pub db_path: String,
     pub model: String,
+    pub fontsize: u32,
 }
