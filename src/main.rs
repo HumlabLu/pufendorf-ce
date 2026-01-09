@@ -30,7 +30,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{create_database, append_documents};
+use lance::{create_database, append_documents, get_row_count};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
@@ -159,7 +159,6 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
-
     if let Some(ref filename) = cli.filename {
         info!("Filename {filename}.");
         /*
@@ -188,29 +187,14 @@ fn main() -> iced::Result {
         }
     };
     
-    // code moved to streaming function.
+    info!("Row count: {}", rt.block_on(get_row_count("docs")));
     
-    let _schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
-        Field::new("abstract", DataType::Utf8, false),
-        Field::new("text", DataType::Utf8, false),
-        Field::new(
-            "vector",
-            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
-            false,
-        ),
-    ]));
-
-    // ------------
-
     // Have DB connexion here?
     let config = AppConfig {
         db_path: "data/lancedb_fastembed".into(),
         model: "gpt-4o-mini".into(),
         fontsize: cli.fontsize,
     };
-
-
 
     iced::application(
         move || App::new(config.clone()),
@@ -582,6 +566,7 @@ fn stream_chat_oai(
                 .query()
                 .nearest_to(qv.as_slice()).expect("err")
                 .limit(12)
+                .refine_factor(4)
                 .execute()
                 .await.expect("err")
                 .try_collect()

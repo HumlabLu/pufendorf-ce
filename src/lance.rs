@@ -21,8 +21,17 @@ use arrow_schema::{DataType, Field, Schema};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 
-use crate::embedder::chunk_file_txt;
+use crate::embedder::{chunk_file_pdf, chunk_file_txt};
 
+pub async fn get_row_count(table_name: &str) -> usize {
+    let db_name = "data/lancedb_fastembed";
+    let table_name = "docs";
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+
+    let table = db.open_table(table_name).execute().await.expect("Cannot open table.");
+    let rc = table.count_rows(None).await.expect("?");
+    rc
+}
 
 pub async fn append_documents<P>(filename: P) -> Result<(), anyhow::Error>
 where
@@ -42,26 +51,50 @@ where
     let table_name = "docs".to_string();
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
 
+    if let Ok(ref table) = db.open_table(&table_name).execute().await {
+        info!("Row count {:?}", table.count_rows(None).await.expect("?"));
+    }
+
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
 
     let starting_id = 0;
-    let chunks = chunk_file_txt(&filename, 128);
+    let path = filename.as_ref();
+    let chunks = if path.is_file() {
+        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+            match ext {
+                "txt" => chunk_file_txt(&filename, 128),
+                "pdf" => chunk_file_pdf(&filename, 128),
+                _ => Err(anyhow::anyhow!("Unsupported file extension: {:?}", ext)),
+            }
+        } else {
+            Err(anyhow::anyhow!("No file extension found"))
+        }
+    } else {
+        Err(anyhow::anyhow!("Not a file: {:?}", path))
+    };
     let new_docs = match chunks {
         Ok(d) => d,
         Err(e) => {
-            error!("{e}");
+            error!("Aborting: {e}");
             return Err(e);
         }
     };
+    info!("New docs {}", new_docs.len());
     let embeddings = embedder.embed(new_docs.clone(), None)?;
     let dim = embeddings[0].len() as i32;
 
-    // Return the table?
     if let Ok(ref table) = db.open_table(&table_name).execute().await {
         let schema: Arc<Schema> = table.schema().await.expect("No schema?");
 
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
+
+        /*
+        info!("Schema: {:?}", schema);
+        for f in schema.fields() {
+            info!("col={} type={:?} nullable={}", f.name(), f.data_type(), f.is_nullable());
+        }
+        */
 
         for field in schema.fields() {
             match field.name().as_str() {
@@ -97,6 +130,7 @@ where
             }
         }
 
+        info!("Preparing batches.");
         let batch = RecordBatch::try_new(schema.clone(), columns)?;
         let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
 
@@ -107,19 +141,24 @@ where
             .await?;
         */
         
-        let mut merge_insert = db
-            .open_table(table_name)
+        let merge_insert = db
+            .open_table(&table_name)
             .execute()
             .await
             .expect("Failed to open table")
-            .merge_insert(&["vector"]);
-        
-        let merge_insert = merge_insert
-            .when_matched_update_all(None)
+            .merge_insert(&["text"]) // vector?
+            // .when_matched_update_all(None)
             .when_not_matched_insert_all()
             .clone();
 
-        merge_insert.execute(Box::new(batches)).await?;
+        info!("Executed.");
+
+        merge_insert.execute(Box::new(batches)).await.expect("Merge insert failed.");
+
+        // Not updated?
+        info!("Row count {:?}", table.count_rows(None).await.expect("Cannot count rows!"));
+    } else {
+        info!("Cannot open table?");
     }
 
     Ok(())
@@ -136,24 +175,6 @@ pub async fn _open_existing_table(db_uri: &str, table_name: &str) -> Result<lanc
     }
 
     Ok(db.open_table(table_name).execute().await?)
-}
-
-
-fn _make_append_batch(next_id0: i32, rows: &[(&str, &str)]) -> Result<(Arc<Schema>, RecordBatch)> {
-    // This schema must match the *current* table schema (names + types + nullability).
-    // In real code, fetch table.schema().await? and build arrays in that order.
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
-        Field::new("text", DataType::Utf8, false),
-        Field::new("source", DataType::Utf8, true),
-    ]));
-
-    let ids: ArrayRef = Arc::new(Int32Array::from_iter_values(next_id0..next_id0 + rows.len() as i32));
-    let texts: ArrayRef = Arc::new(StringArray::from_iter_values(rows.iter().map(|(t, _src)| *t)));
-    let sources: ArrayRef = Arc::new(StringArray::from_iter(rows.iter().map(|(_t, src)| Some(*src))));
-
-    let batch = RecordBatch::try_new(schema.clone(), vec![ids, texts, sources])?;
-    Ok((schema, batch))
 }
 
 pub fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
