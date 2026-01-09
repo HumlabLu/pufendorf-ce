@@ -656,11 +656,10 @@ fn stream_chat_oai(
             }
         }
 
-        {
+        { // Inside a block because we cannot hold the guard.
             let mut h = history.lock().unwrap();
             info!("Q: {}", user_prompt);
             h.push(Line { role: Role::User, content: user_prompt });
-            // println!("Pusing: {}", &assistant_acc);
             info!("A: {}", assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
