@@ -23,61 +23,104 @@ use lancedb::index::Index;
 
 use crate::embedder::chunk_file_txt;
 
-pub async fn _append_documents(
-    table: &lancedb::table::Table,
-    embedder: &mut fastembed::TextEmbedding,
-    new_docs: Vec<String>,
-    starting_id: i32,
-) -> Result<()> {
-    debug!("append_documents(...).");
-    let schema: Arc<Schema> = table.schema().await.expect("No schema?");
 
+pub async fn append_documents<P>(filename: P) -> Result<(), anyhow::Error>
+where
+    P: AsRef<Path>,
+{
+    // Embedding model (downloads once, then runs locally).
+    let mut embedder = TextEmbedding::try_new(
+        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+    ).expect("No embedding model.");
+
+    // Embedder, plus determine dimension.
+    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
+    let dim = model_info.unwrap().dim as i32;
+    info!("Embedding dim {}", dim);
+
+    let db_name = "data/lancedb_fastembed";
+    let table_name = "docs".to_string();
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+
+    info!("Database: {db_name}");
+    info!("Table name: {table_name}");
+
+    let starting_id = 0;
+    let chunks = chunk_file_txt(&filename, 128);
+    let new_docs = match chunks {
+        Ok(d) => d,
+        Err(e) => {
+            error!("{e}");
+            return Err(e);
+        }
+    };
     let embeddings = embedder.embed(new_docs.clone(), None)?;
     let dim = embeddings[0].len() as i32;
 
-    let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
+    // Return the table?
+    if let Ok(ref table) = db.open_table(&table_name).execute().await {
+        let schema: Arc<Schema> = table.schema().await.expect("No schema?");
 
-    for field in schema.fields() {
-        match field.name().as_str() {
-            "id" => {
-                columns.push(Arc::new(
-                    Int32Array::from_iter_values(starting_id..starting_id + new_docs.len() as i32),
-                ) as ArrayRef);
+        let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
+
+        for field in schema.fields() {
+            match field.name().as_str() {
+                "id" => {
+                    columns.push(Arc::new(
+                        Int32Array::from_iter_values(starting_id..starting_id + new_docs.len() as i32),
+                    ) as ArrayRef);
+                }
+                "abstract" => {
+                    columns.push(Arc::new(
+                        StringArray::from_iter_values(new_docs.iter().cloned()),
+                    ) as ArrayRef);
+                }
+                "text" => {
+                    columns.push(Arc::new(
+                        StringArray::from_iter_values(new_docs.iter().cloned()),
+                    ) as ArrayRef);
+                }
+                "vector" => {
+                    columns.push(Arc::new(
+                        FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+                            embeddings.iter().map(|v| {
+                                Some(v.iter().copied().map(Some).collect::<Vec<_>>())
+                            }),
+                            dim,
+                        ),
+                    ) as ArrayRef);
+                }
+                _ if field.is_nullable() => {
+                    columns.push(arrow_array::new_null_array(field.data_type(), new_docs.len()));
+                }
+                other => bail!("Unhandled non-nullable column in append: {other}"),
             }
-            "abstract" => {
-                columns.push(Arc::new(
-                    StringArray::from_iter_values(new_docs.iter().cloned()),
-                ) as ArrayRef);
-            }
-            "text" => {
-                columns.push(Arc::new(
-                    StringArray::from_iter_values(new_docs.iter().cloned()),
-                ) as ArrayRef);
-            }
-            "vector" => {
-                columns.push(Arc::new(
-                    FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-                        embeddings.iter().map(|v| {
-                            Some(v.iter().copied().map(Some).collect::<Vec<_>>())
-                        }),
-                        dim,
-                    ),
-                ) as ArrayRef);
-            }
-            _ if field.is_nullable() => {
-                columns.push(arrow_array::new_null_array(field.data_type(), new_docs.len()));
-            }
-            other => bail!("Unhandled non-nullable column in append: {other}"),
         }
+
+        let batch = RecordBatch::try_new(schema.clone(), columns)?;
+        let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
+
+        /*
+        table.add(Box::new(batches))
+            .mode(AddDataMode::Append)
+            .execute()
+            .await?;
+        */
+        
+        let mut merge_insert = db
+            .open_table(table_name)
+            .execute()
+            .await
+            .expect("Failed to open table")
+            .merge_insert(&["vector"]);
+        
+        let merge_insert = merge_insert
+            .when_matched_update_all(None)
+            .when_not_matched_insert_all()
+            .clone();
+
+        merge_insert.execute(Box::new(batches)).await?;
     }
-
-    let batch = RecordBatch::try_new(schema.clone(), columns)?;
-    let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
-
-    table.add(Box::new(batches))
-        .mode(AddDataMode::Append)
-        .execute()
-        .await?;
 
     Ok(())
 }

@@ -30,7 +30,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{create_database};
+use lance::{create_database, append_documents};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
@@ -58,6 +58,9 @@ struct Cli {
     /// error, warn, info, debug, or trace
     #[arg(short, long, default_value = "info")]
     log_level: String,
+
+    #[arg(short, long, help = "Append text file with info.")]
+    append: Option<String>,
 
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
@@ -167,8 +170,13 @@ fn main() -> iced::Result {
             }
         }*/
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(create_database(filename));
-       
+        let _ = rt.block_on(create_database(filename));     
+    }
+
+    if let Some(ref filename) = cli.append{
+        info!("Append filename {filename}.");
+        let rt = Runtime::new().unwrap();
+        let _ = rt.block_on(append_documents(filename));     
     }
 
     let rt = Runtime::new().unwrap();
