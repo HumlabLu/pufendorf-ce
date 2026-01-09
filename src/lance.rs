@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 
-use log::{debug, info, trace};
+use log::{debug, info, trace, error};
 
 use arrow_array::{
   ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray
@@ -20,6 +20,8 @@ use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
+
+use crate::embedder::chunk_file_txt;
 
 pub async fn _append_documents(
     table: &lancedb::table::Table,
@@ -143,7 +145,8 @@ where
     docs
 }
 
-pub async fn create_database<P>(filename: P) 
+// The db_name is hardcoded!
+pub async fn create_database<P>(filename: P) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -179,11 +182,20 @@ where
     // Return the table?
     if let Ok(ref _table) = db.open_table(&table_name).execute().await {
         info!("Table {} already exists, skipping.", &table_name);
-        return;
+        return Ok(());
     };
 
-    // Create tabel/data etc
-    let docs = read_file_to_vec(&filename);
+    // Create tabel/data etc.
+    // FOXME use the chunks version here.
+    // let docs = read_file_to_vec(&filename);
+    let chunks = chunk_file_txt(&filename, 512);
+    let docs = match chunks {
+        Ok(d) => d,
+        Err(e) => {
+            error!("{e}");
+            return Err(e);
+        }
+    };
 
     let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
 
@@ -210,5 +222,7 @@ where
     } else {
         info!("Skipping vector index: only {n} rows (need >= 256 for PQ training)");
     }
+
+    Ok(())
 }
 

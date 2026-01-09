@@ -45,6 +45,9 @@ use tokio::runtime::Runtime;
 mod structs;
 use structs::*;
 
+mod embedder;
+use embedder::chunk_file_txt;
+
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 
@@ -59,7 +62,10 @@ struct Cli {
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
 
-    #[arg(short, long, help = "Font size.", default_value_t = 20)]
+    #[arg(short, long, help = "Text file with info.")]
+    filename: Option<String>,
+
+    #[arg(long, help = "Font size.", default_value_t = 20)]
     fontsize: u32,
 
     #[arg(short, long, help = "Table name.")]
@@ -125,14 +131,17 @@ fn main() -> iced::Result {
     // ------------ New Db stuff
     
     // Embedding model (downloads once, then runs locally).
+    // See also embedder.rs
     let mut embedder = TextEmbedding::try_new(
         InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
     ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
-    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
-    let dim = one_embeddings[0].len() as i32;
+    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
+    let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
+
+    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
 
     // My DB. Created if it doesn't exist.
     let db_name = match cli.dbname {
@@ -147,10 +156,23 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
+
+    if let Some(ref filename) = cli.filename {
+        info!("Filename {filename}.");
+        let chunks = chunk_file_txt(filename, 512);
+        if let Ok(lines) = chunks {
+            for line in lines {
+                println!("{:?}", line);
+            }
+        }
+        // create_database(filename).await.unwrap();
+        
+    }
+
     // create_database(db_name);
     // Should return Db, schema, ...
     let rt = Runtime::new().unwrap();
-    rt.block_on(create_database(db_name.clone()));
+    let _ = rt.block_on(create_database(db_name.clone()));
     let _db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
 
         Ok(db) => Some(db),
@@ -180,6 +202,8 @@ fn main() -> iced::Result {
         db_path: "data/lancedb_fastembed".into(),
         model: "gpt-4o-mini".into(),
     };
+
+
 
     iced::application(
         move || App::new(config.clone()),
