@@ -198,6 +198,7 @@ fn main() -> iced::Result {
         model: "gpt-4o-mini".into(),
         fontsize: cli.fontsize,
         cut_off: cli.cutoff,
+        max_context: 12,
     };
 
     iced::application(
@@ -307,6 +308,11 @@ impl App {
                 Task::none()
             }
 
+            Message::MaxContextChanged(t) => {
+                self.config.max_context = t;
+                Task::none()
+            }
+
             Message::NumPredictChanged(n) => {
                 self.num_predict = n;
                 Task::none()
@@ -362,7 +368,7 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.config.cut_off)
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.config.clone())
                         )
                     }
                 };
@@ -449,10 +455,14 @@ impl App {
             slider(0.0..=2.0, self.config.cut_off, Message::CutOffChanged)
                 .width(Length::FillPortion(2))
                 .step(0.1),
-            text(format!("Max tokens: {}", self.num_predict)).font(MY_FONT),
+            /*text(format!("Max tokens: {}", self.num_predict)).font(MY_FONT),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::FillPortion(1))
-                .step(12),
+                .step(12),*/
+            text(format!("Max CTX: {}", self.config.max_context)).font(MY_FONT),
+            slider(1u32..=42u32, self.config.max_context, Message::MaxContextChanged)
+                .width(Length::FillPortion(1))
+                .step(1u32),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
             button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
         ]
@@ -508,7 +518,7 @@ fn stream_chat_oai(
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
     dbc: Arc<Mutex<Option<lancedb::Connection>>>,
-    cut_off: f32,
+    config: AppConfig,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
@@ -579,7 +589,7 @@ fn stream_chat_oai(
             let results: Vec<RecordBatch> = table
                 .query()
                 .nearest_to(qv.as_slice()).expect("err")
-                .limit(12)
+                .limit(config.max_context as usize)
                 .refine_factor(4)
                 .execute()
                 .await.expect("err")
@@ -595,7 +605,7 @@ fn stream_chat_oai(
                 for i in 0..b.num_rows() {
                     let dist = dists.value(i);
                     let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
-                    if dist < cut_off {
+                    if dist < config.cut_off {
                         debug!("{dist:.3} * {text}");
                         context += text;
                     } else {

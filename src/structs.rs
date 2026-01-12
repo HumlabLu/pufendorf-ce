@@ -55,6 +55,7 @@ pub enum Message {
 
     TemperatureChanged(f32),
     CutOffChanged(f32),
+    MaxContextChanged(u32),
     NumPredictChanged(i32),
 
     ResetParams,
@@ -93,4 +94,5 @@ pub struct AppConfig {
     pub model: String,
     pub fontsize: u32,
     pub cut_off: f32,
+    pub max_context: u32,
 }
