@@ -91,4 +91,5 @@ pub struct AppConfig {
     pub db_path: String,
     pub model: String,
     pub fontsize: u32,
+    pub cut_off: f32,
 }

@@ -62,6 +62,9 @@ struct Cli {
     #[arg(short, long, help = "Append text file with info.")]
     append: Option<String>,
 
+    #[arg(short, long, help = "Retrieval cut off.", default_value_t = 1.0)]
+    cutoff: f32,
+
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
 
@@ -194,6 +197,7 @@ fn main() -> iced::Result {
         db_path: "data/lancedb_fastembed".into(),
         model: "gpt-4o-mini".into(),
         fontsize: cli.fontsize,
+        cut_off: cli.cutoff,
     };
 
     iced::application(
@@ -353,7 +357,7 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone())
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.config.cut_off)
                         )
                     }
                 };
@@ -495,6 +499,7 @@ fn stream_chat_oai(
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
     dbc: Arc<Mutex<Option<lancedb::Connection>>>,
+    cut_off: f32,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
@@ -581,7 +586,7 @@ fn stream_chat_oai(
                 for i in 0..b.num_rows() {
                     let dist = dists.value(i);
                     let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
-                    if dist < 1.0 {
+                    if dist < cut_off {
                         debug!("{dist:.3} * {text}");
                         context += text;
                     } else {
