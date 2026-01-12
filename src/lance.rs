@@ -63,8 +63,8 @@ where
     let chunks = if path.is_file() {
         if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
             match ext {
-                "txt" => chunk_file_txt(&filename, 128),
-                "pdf" => chunk_file_pdf(&filename, 128),
+                "txt" => chunk_file_txt(&filename, 512),
+                "pdf" => chunk_file_pdf(&filename, 512),
                 _ => Err(anyhow::anyhow!("Unsupported file extension: {:?}", ext)),
             }
         } else {
@@ -209,6 +209,35 @@ where
     docs
 }
 
+// Read file prepared by prepare_writings.py
+pub fn read_file_to_vecs<P>(filename: P) -> (Vec<String>, Vec<String>)
+where
+    P: AsRef<Path>,
+{
+    debug!("read_file_to_vecs(...).");
+    let mut col1 = Vec::new();
+    let mut col2 = Vec::new();
+
+    if let Ok(lines) = read_lines(&filename) {
+        for line in lines {
+            if let Ok(content) = line {
+                if content.len() <= 12 { continue; }
+                let mut parts = content.splitn(3, '\t');
+                if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
+                    trace!("{}\t{}", a, b);
+                    col1.push(a.to_owned());
+                    col2.push(b.to_owned());
+                }
+            }
+        }
+    } else {
+        eprintln!("Could not read file: {}", filename.as_ref().display());
+    }
+
+    info!("Row count: {}", col1.len());
+    (col1, col2)
+}
+
 // The db_name and table_name are hardcoded!
 // Filename argument reads the data for a new database.
 pub async fn create_database<P>(filename: P) -> Result<(), anyhow::Error>
@@ -252,20 +281,27 @@ where
 
     // Create tabel/data etc.
     // let docs = read_file_to_vec(&filename);
-    let chunks = chunk_file_txt(&filename, 128);
+    /*
+    let chunks = chunk_file_txt(&filename, 512);
     let docs = match chunks {
         Ok(d) => d,
         Err(e) => {
             error!("{e}");
             return Err(e);
         }
-    };
+    };*/
 
-    let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
+    let (v1, v2) = read_file_to_vecs(&filename);
+    
+    // let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
+    let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
 
-    let ids = Arc::new(Int32Array::from_iter_values(0..(docs.len() as i32)));
-    let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
-    let texts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
+    // let ids = Arc::new(Int32Array::from_iter_values(0..(docs.len() as i32)));
+    let ids = Arc::new(Int32Array::from_iter_values(0..(v1.len() as i32)));
+    // let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
+    // let texts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
+    let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
+    let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
     let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
         doc_embeddings
             .iter()
@@ -280,7 +316,7 @@ where
 
     let t = db.open_table(&table_name).execute().await.unwrap();
 
-    let n = docs.len();
+    let n = v2.len();
     if n >= 256 {
         info!("Creating vector index.");
         t.create_index(&["vector"], Index::Auto).execute().await.unwrap();

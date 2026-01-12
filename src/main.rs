@@ -169,13 +169,13 @@ fn main() -> iced::Result {
             }
         }*/
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(create_database(filename));     
+        let _ = rt.block_on(create_database(filename));
     }
 
     if let Some(ref filename) = cli.append{
         info!("Append filename {filename}.");
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(append_documents(filename));     
+        let _ = rt.block_on(append_documents(filename));
     }
 
     let rt = Runtime::new().unwrap();
