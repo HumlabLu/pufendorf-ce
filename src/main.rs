@@ -71,7 +71,7 @@ struct Cli {
     #[arg(short, long, help = "Text file with info.")]
     filename: Option<String>,
 
-    #[arg(long, help = "Font size.", default_value_t = 20)]
+    #[arg(long, help = "Font size.", default_value_t = 18)]
     fontsize: u32,
 
     #[arg(short, long, help = "Table name.")]
@@ -441,8 +441,8 @@ impl App {
         let controls = row![
             // text("Mode:").font(MY_FONT),
             // pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
-            text(format!("Temp: {:.2}", self.temperature)).font(MY_FONT),
-            slider(0.0..=2.0, self.temperature, Message::TemperatureChanged)
+            text(format!("T: {:.2}", self.temperature)).font(MY_FONT),
+            slider(0.0..=1.2, self.temperature, Message::TemperatureChanged)
                 .width(Length::FillPortion(2))
                 .step(0.05),
             text(format!("CO: {:.1}", self.config.cut_off)).font(MY_FONT),
