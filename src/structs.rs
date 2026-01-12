@@ -54,6 +54,7 @@ pub enum Message {
     ModeChanged(Mode),
 
     TemperatureChanged(f32),
+    CutOffChanged(f32),
     NumPredictChanged(i32),
 
     ResetParams,
