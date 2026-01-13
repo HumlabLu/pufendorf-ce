@@ -3,7 +3,8 @@ import sys
 import os
 
 def main():
-    filenames = ["writings_bk1.txt", "writings_bk2.txt"]
+    filenames = ["writings_bk1.txt", "writings_bk2.txt", "writings_bk4.txt"]
+    # filenames = ["writings_bk4.txt"]
     chapter = "0"
     book = "Book one"
     par = ""

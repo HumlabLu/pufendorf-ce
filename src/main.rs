@@ -532,6 +532,7 @@ fn stream_chat_oai(
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
+        debug!("Processing query: {user_prompt}");
 
         // Moderation ----
         let parameters = ModerationParametersBuilder::default()
