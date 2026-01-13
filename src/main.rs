@@ -177,17 +177,27 @@ fn main() -> iced::Result {
             }
         }*/
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(create_database(filename));
+        let _ = rt.block_on(create_database(filename, &db_name, &table_name));
     }
+
+    // Have DB connexion here?
+    let config = AppConfig {
+        db_path: db_name.clone(), //"data/lancedb_fastembed".into(),
+        table_name: table_name.clone(), //"docs".into(),
+        model: "gpt-4o-mini".into(),
+        fontsize: cli.fontsize,
+        cut_off: cli.cutoff,
+        max_context: 12,
+    };
 
     if let Some(ref filename) = cli.append{
         info!("Append filename {filename}.");
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(append_documents(filename));
+        let _ = rt.block_on(append_documents(filename, &db_name, &table_name));
     }
 
     let rt = Runtime::new().unwrap();
-    let _db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name)) {
+    let _db: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name.clone())) {
         Ok(db) => Some(db),
         Err(_e) => {
             error!("DB Error!");
@@ -195,16 +205,8 @@ fn main() -> iced::Result {
         }
     };
     
-    info!("Row count: {}", rt.block_on(get_row_count("docs")));
+    info!("Row count: {}", rt.block_on(get_row_count(&db_name, &table_name)));
     
-    // Have DB connexion here?
-    let config = AppConfig {
-        db_path: "data/lancedb_fastembed".into(),
-        model: "gpt-4o-mini".into(),
-        fontsize: cli.fontsize,
-        cut_off: cli.cutoff,
-        max_context: 12,
-    };
 
     iced::application(
         move || App::new(config.clone()),
@@ -572,7 +574,7 @@ fn stream_chat_oai(
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // insert Db/RAG here?
-        let table_name = "docs".to_string(); // FIXME should be params.
+        let table_name = config.table_name; // "docs".to_string(); // FIXME should be params.
         let db: lancedb::Connection = {
             let guard = dbc.lock().unwrap();
             guard.clone().take().expect("Expected a database connection!")

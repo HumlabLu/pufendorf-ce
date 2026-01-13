@@ -93,6 +93,7 @@ pub struct App {
 #[derive(Clone)]
 pub struct AppConfig {
     pub db_path: String,
+    pub table_name: String,
     pub model: String,
     pub fontsize: u32,
     pub cut_off: f32,

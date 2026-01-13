@@ -22,18 +22,18 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_txt};
+use crate::structs::AppConfig;
 
-pub async fn get_row_count(table_name: &str) -> usize {
-    let db_name = "data/lancedb_fastembed";
-    let table_name = "docs";
-    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
 
-    let table = db.open_table(table_name).execute().await.expect("Cannot open table.");
+    let table = db.open_table(table_name).execute().await.expect("Cannot open table");
     let rc = table.count_rows(None).await.expect("?");
+
     rc
 }
 
-pub async fn append_documents<P>(filename: P) -> Result<(), anyhow::Error>
+pub async fn append_documents<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -47,11 +47,11 @@ where
     let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
 
-    let db_name = "data/lancedb_fastembed";
-    let table_name = "docs".to_string();
-    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+    // let db_name = config.db_path.clone(); //data/lancedb_fastembed";
+    // let table_name = config.table_name.clone(); //"docs".to_string();
+    let db = lancedb::connect(db_name).execute().await.expect("Cannot connect to DB.");
 
-    if let Ok(ref table) = db.open_table(&table_name).execute().await {
+    if let Ok(ref table) = db.open_table(table_name).execute().await {
         info!("Row count {:?}", table.count_rows(None).await.expect("?"));
     }
 
@@ -84,7 +84,7 @@ where
     let embeddings = embedder.embed(new_docs.clone(), None)?;
     let dim = embeddings[0].len() as i32;
 
-    if let Ok(ref table) = db.open_table(&table_name).execute().await {
+    if let Ok(ref table) = db.open_table(table_name).execute().await {
         let schema: Arc<Schema> = table.schema().await.expect("No schema?");
 
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
@@ -142,7 +142,7 @@ where
         */
         
         let merge_insert = db
-            .open_table(&table_name)
+            .open_table(table_name)
             .execute()
             .await
             .expect("Failed to open table")
@@ -240,7 +240,7 @@ where
 
 // The db_name and table_name are hardcoded!
 // Filename argument reads the data for a new database.
-pub async fn create_database<P>(filename: P) -> Result<(), anyhow::Error>
+pub async fn create_database<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -256,8 +256,6 @@ where
     let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
 
-    let db_name = "data/lancedb_fastembed";
-    let table_name = "docs".to_string();
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
     let schema = Arc::new(Schema::new(vec![
         Field::new("id", DataType::Int32, false),
@@ -274,7 +272,7 @@ where
     info!("Table name: {table_name}");
 
     // Return the table?
-    if let Ok(ref _table) = db.open_table(&table_name).execute().await {
+    if let Ok(ref _table) = db.open_table(table_name).execute().await {
         info!("Table {} already exists, skipping.", &table_name);
         return Ok(());
     };
@@ -312,9 +310,9 @@ where
     let batch = RecordBatch::try_new(schema.clone(), vec![ids, abstracts, texts, vectors]).unwrap();
     let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
 
-    db.create_table(&table_name, Box::new(batches)).execute().await.unwrap();
+    db.create_table(table_name, Box::new(batches)).execute().await.unwrap();
 
-    let t = db.open_table(&table_name).execute().await.unwrap();
+    let t = db.open_table(table_name).execute().await.unwrap();
 
     let n = v2.len();
     if n >= 256 {
