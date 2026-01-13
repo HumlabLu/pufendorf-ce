@@ -48,6 +48,8 @@ use structs::*;
 mod embedder;
 use embedder::chunk_file_txt;
 
+use std::env;
+
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 
@@ -133,7 +135,9 @@ fn main() -> iced::Result {
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
-    
+
+    let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
+
     // ------------ New Db stuff
     
     // Embedding model (downloads once, then runs locally).
