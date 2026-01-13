@@ -261,7 +261,6 @@ impl App {
         (Self {
             config, 
 
-            // gpt-5-nano
             model: "gpt-4.1-nano".into(),
             mode: Mode::Chat,
 
