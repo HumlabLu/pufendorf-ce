@@ -605,13 +605,14 @@ fn stream_chat_oai(
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
                 let (retrieved, min_dist, max_dist) =
-                    (0..b.num_rows()).fold((0usize, None::<f32>, None::<f32>), |(cnt, min_d, max_d), i| {
+                    (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    
                         let dist = dists.value(i);
                         let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
                         let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
 
-                        let min_d = Some(min_d.map_or(dist, |m| m.min(dist)));
-                        let max_d = Some(max_d.map_or(dist, |m| m.max(dist)));
+                        let min_d = min_d.min(dist);
+                        let max_d = max_d.max(dist);
 
                         if dist < config.cut_off {
                             debug!("{dist:.3} * {astract}: {text}");
@@ -622,7 +623,7 @@ fn stream_chat_oai(
                             (cnt, min_d, max_d)
                         }
                     });
-                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist.unwrap_or(0.), max_dist.unwrap_or(0.));
+                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
             }
         };
 
