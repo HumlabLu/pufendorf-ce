@@ -94,6 +94,7 @@ pub struct App {
 pub struct AppConfig {
     pub db_path: String,
     pub table_name: String,
+    pub promptfile: String,
     pub model: String,
     pub fontsize: u32,
     pub cut_off: f32,

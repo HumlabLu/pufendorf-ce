@@ -76,6 +76,9 @@ struct Cli {
     #[arg(long, help = "Font size.", default_value_t = 18)]
     fontsize: u32,
 
+    #[arg(short, long, help = "System prompt/info json file.")]
+    promptfile: Option<String>,
+
     #[arg(short, long, help = "Table name.")]
     tablename: Option<String>,
 }
@@ -180,10 +183,16 @@ fn main() -> iced::Result {
         let _ = rt.block_on(create_database(filename, &db_name, &table_name));
     }
 
+    let promptfile = match cli.promptfile {
+        Some(pf) => pf,
+        None => "assets/chatprompts.json".to_string()
+    };
+
     // Have DB connexion here?
     let config = AppConfig {
         db_path: db_name.clone(), //"data/lancedb_fastembed".into(),
         table_name: table_name.clone(), //"docs".into(),
+        promptfile: promptfile,
         model: "gpt-4o-mini".into(),
         fontsize: cli.fontsize,
         cut_off: cli.cutoff,
@@ -230,7 +239,7 @@ impl App {
     fn new(config: AppConfig) -> (Self, Task<Message>) {
         // Read the prompts from a json file.
         // Should contain a system_prompt and extra_info.
-        let file_path = Path::new("assets/chatprompts.json");
+        let file_path = Path::new(&config.promptfile);
         let content = fs::read_to_string(file_path).expect("no file");
         let data: Value = serde_json::from_str(&content).expect("data");
         let sysprompt = &data["system_prompt"]
