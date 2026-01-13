@@ -463,7 +463,7 @@ impl App {
                 .width(Length::FillPortion(1))
                 .step(0.1),
             text(format!("CO: {:.1}", self.config.cut_off)).font(MY_FONT),
-            slider(0.0..=2.0, self.config.cut_off, Message::CutOffChanged)
+            slider(0.0..=4.0, self.config.cut_off, Message::CutOffChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
             /*text(format!("Max tokens: {}", self.num_predict)).font(MY_FONT),
@@ -605,7 +605,22 @@ fn stream_chat_oai(
                 let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
-                for i in 0..b.num_rows() {
+                let retrieved = (0..b.num_rows()).fold(0usize, |acc, i| {
+                    let dist = dists.value(i);
+                    let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
+                    let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+
+                    if dist < config.cut_off {
+                        debug!("{dist:.3} * {astract}: {text}");
+                        context += text;
+                        acc + 1
+                    } else {
+                        debug!("{dist:.3}   {astract}: {text}");
+                        acc
+                    }
+                });
+                info!("Retrieved {retrieved} items.");
+                /*for i in 0..b.num_rows() {
                     let dist = dists.value(i);
                     // abstract is a reserved word?
                     let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
@@ -616,7 +631,7 @@ fn stream_chat_oai(
                     } else {
                         debug!("{dist:.3}   {astract}: {text}");
                     }
-                }
+                }*/
             }
         };
 
