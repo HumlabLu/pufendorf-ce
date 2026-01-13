@@ -571,23 +571,12 @@ fn stream_chat_oai(
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // insert Db/RAG here?
-        let table_name = "docs".to_string();
-        let dim = 384;
+        let table_name = "docs".to_string(); // FIXME should be params.
         let db: lancedb::Connection = {
             let guard = dbc.lock().unwrap();
             guard.clone().take().expect("Expected a database connection!")
         };
 
-        let _schema = Arc::new(Schema::new(vec![
-            Field::new("id", DataType::Int32, false),
-            Field::new("abstract", DataType::Utf8, false),
-            Field::new("text", DataType::Utf8, false),
-            Field::new(
-                "vector",
-                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
-                false,
-            ),
-        ]));
         let q = {
             let mut e = embedder.lock().unwrap();
             e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
