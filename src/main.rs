@@ -383,7 +383,6 @@ impl App {
                         )
                     }
                 };
-                // Task::none()
                 Task::batch([task, snap_to(LOG.clone(), RelativeOffset::END)])
             }
 
@@ -605,33 +604,25 @@ fn stream_chat_oai(
                 let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
-                let retrieved = (0..b.num_rows()).fold(0usize, |acc, i| {
-                    let dist = dists.value(i);
-                    let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
-                    let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+                let (retrieved, min_dist, max_dist) =
+                    (0..b.num_rows()).fold((0usize, None::<f32>, None::<f32>), |(cnt, min_d, max_d), i| {
+                        let dist = dists.value(i);
+                        let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
+                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
 
-                    if dist < config.cut_off {
-                        debug!("{dist:.3} * {astract}: {text}");
-                        context += text;
-                        acc + 1
-                    } else {
-                        debug!("{dist:.3}   {astract}: {text}");
-                        acc
-                    }
-                });
-                info!("Retrieved {retrieved} items.");
-                /*for i in 0..b.num_rows() {
-                    let dist = dists.value(i);
-                    // abstract is a reserved word?
-                    let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
-                    let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
-                    if dist < config.cut_off {
-                        debug!("{dist:.3} * {astract}: {text}");
-                        context += text;
-                    } else {
-                        debug!("{dist:.3}   {astract}: {text}");
-                    }
-                }*/
+                        let min_d = Some(min_d.map_or(dist, |m| m.min(dist)));
+                        let max_d = Some(max_d.map_or(dist, |m| m.max(dist)));
+
+                        if dist < config.cut_off {
+                            debug!("{dist:.3} * {astract}: {text}");
+                            context += text;
+                            (cnt + 1, min_d, max_d)
+                        } else {
+                            debug!("{dist:.3}   {astract}: {text}");
+                            (cnt, min_d, max_d)
+                        }
+                    });
+                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist.unwrap_or(0.), max_dist.unwrap_or(0.));
             }
         };
 
