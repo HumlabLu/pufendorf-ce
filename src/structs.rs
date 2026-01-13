@@ -1,3 +1,4 @@
+use fastembed::TextEmbedding;
 use std::{
     fmt,
     sync::{Arc, Mutex},
@@ -86,6 +87,7 @@ pub struct App {
     pub extra_info: String,
 
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    pub embedder: Arc<Mutex<TextEmbedding>>,
 }
 
 #[derive(Clone)]

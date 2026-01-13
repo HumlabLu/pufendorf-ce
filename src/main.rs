@@ -105,6 +105,7 @@ fn log_format(
 
 fn theme(_: &App) -> Theme {
     Theme::TokyoNight //GruvboxLight //Dark
+    // Theme::GruvboxDark // Light
 }
 
 
@@ -151,7 +152,7 @@ fn main() -> iced::Result {
     let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
 
-    let one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
+    let _one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");
 
     // My DB. Created if it doesn't exist.
     let db_name = match cli.dbname {
@@ -262,6 +263,10 @@ impl App {
         // Probably does not have to be an Arc/Mutex.
         let db_connexion = Arc::new(Mutex::new(dbc));
 
+        let embedder = TextEmbedding::try_new(
+                    InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+                ).expect("Embedder failed!");
+
         (Self {
             config, 
 
@@ -285,6 +290,7 @@ impl App {
             extra_info: "The year is 1667".into(), // Not used.
 
             db_connexion: db_connexion,
+            embedder: Arc::new(Mutex::new(embedder)),
             
         }, Task::none())
     }
@@ -371,7 +377,7 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.config.clone())
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.embedder.clone(), self.config.clone())
                         )
                     }
                 };
@@ -521,6 +527,7 @@ fn stream_chat_oai(
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
     dbc: Arc<Mutex<Option<lancedb::Connection>>>,
+    embedder: Arc<Mutex<TextEmbedding>>,
     config: AppConfig,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
@@ -564,10 +571,6 @@ fn stream_chat_oai(
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // insert Db/RAG here?
-        let mut embedder = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::AllMiniLML6V2)
-                .with_show_download_progress(true),
-        ).expect("No embedding model.");
         let table_name = "docs".to_string();
         let dim = 384;
         let db: lancedb::Connection = {
@@ -585,7 +588,10 @@ fn stream_chat_oai(
                 false,
             ),
         ]));
-        let q = embedder.embed(vec![&user_prompt], None).expect("err");
+        let q = {
+            let mut e = embedder.lock().unwrap();
+            e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
+        };
         let qv = &q[0];
 
         if let Ok(ref table) = db.open_table(&table_name).execute().await {
