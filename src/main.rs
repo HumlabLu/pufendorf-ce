@@ -588,26 +588,30 @@ fn stream_chat_oai(
                 .query()
                 .nearest_to(qv.as_slice()).expect("err")
                 .limit(config.max_context as usize)
-                .refine_factor(4)
+                .refine_factor(4) // I pulled this number out of my hat.
                 .execute()
                 .await.expect("err")
                 .try_collect()
                 .await.expect("err");
             for b in &results {
+                let abstract_idx = b.schema().index_of("abstract").expect("err");
                 let text_idx = b.schema().index_of("text").expect("err");
                 let dist_idx = b.schema().index_of("_distance").expect("err");
 
+                let abstracts = b.column(abstract_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
                 for i in 0..b.num_rows() {
                     let dist = dists.value(i);
+                    // abstract is a reserved word?
+                    let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
                     let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
                     if dist < config.cut_off {
-                        debug!("{dist:.3} * {text}");
+                        debug!("{dist:.3} * {astract}: {text}");
                         context += text;
                     } else {
-                        debug!("{dist:.3}   {text}");
+                        debug!("{dist:.3}   {astract}: {text}");
                     }
                 }
             }
