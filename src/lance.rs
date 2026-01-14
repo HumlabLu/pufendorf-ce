@@ -227,7 +227,7 @@ where
                 if content.len() <= 12 {
                     continue;
                 }
-                let mut parts = content.splitn(2, '\t');
+                let mut parts = content.splitn(3, '\t');
                 if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
                     trace!("{}\t{}", a, b);
                     col1.push(a.to_owned());
@@ -272,6 +272,7 @@ where
     info!("Table name: {table_name}");
 
     // Return the table? Overwrite?
+    // We can overwrite, but return here anyway.
     if let Ok(ref _table) = db.open_table(table_name).execute().await {
         info!("Table {} already exists, replacing.", &table_name);
         return Ok(());

@@ -64,7 +64,7 @@ struct Cli {
     #[arg(short, long, help = "Append text file with info.")]
     append: Option<String>,
 
-    #[arg(short, long, help = "Retrieval cut off.", default_value_t = 1.0)]
+    #[arg(short, long, help = "Retrieval cut off.", default_value_t = 1.5)]
     cutoff: f32,
 
     #[arg(short, long, help = "DB name.")]
