@@ -244,7 +244,7 @@ impl App {
         let data: Value = serde_json::from_str(&content).expect("data");
         let sysprompt = &data["system_prompt"]
             .as_str()
-            .unwrap_or("You are Samuel Von Pufendorf.");
+            .unwrap_or("Answer the questions.");
         let mut sysprompt = sysprompt.to_string();
         if let Some(extras) = data["extra_info"].as_array() {
             sysprompt += "\n";
