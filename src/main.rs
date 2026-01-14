@@ -32,7 +32,6 @@ use std::str::FromStr;
 mod lance;
 use lance::{create_database, append_documents, get_row_count};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use arrow_schema::{DataType, Field, Schema};
 use arrow_array::{
     RecordBatch
 };
@@ -46,7 +45,6 @@ mod structs;
 use structs::*;
 
 mod embedder;
-use embedder::chunk_file_txt;
 
 use std::env;
 
