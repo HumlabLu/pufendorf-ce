@@ -274,7 +274,7 @@ where
     // Return the table? Overwrite?
     if let Ok(ref _table) = db.open_table(table_name).execute().await {
         info!("Table {} already exists, replacing.", &table_name);
-        // return Ok(());
+        return Ok(());
     };
 
     // Create tabel/data etc.
