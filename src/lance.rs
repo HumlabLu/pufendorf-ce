@@ -18,6 +18,7 @@ use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
+use lancedb::database::CreateTableMode;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_txt};
 
@@ -244,16 +245,11 @@ where
 
 // The db_name and table_name are hardcoded!
 // Filename argument reads the data for a new database.
-pub async fn create_database<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
+pub async fn create_database<P>(filename: P, db_name: &str, table_name: &str, embedder: &mut TextEmbedding) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
     info!("Creating database.");
-
-    // Embedding model (downloads once, then runs locally).
-    let mut embedder = TextEmbedding::try_new(
-        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
-    ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
     let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
@@ -277,8 +273,8 @@ where
 
     // Return the table? Overwrite?
     if let Ok(ref _table) = db.open_table(table_name).execute().await {
-        info!("Table {} already exists, skipping.", &table_name);
-        return Ok(());
+        info!("Table {} already exists, replacing.", &table_name);
+        // return Ok(());
     };
 
     // Create tabel/data etc.
@@ -312,14 +308,15 @@ where
     let batch = RecordBatch::try_new(schema.clone(), vec![ids, abstracts, texts, vectors]).unwrap();
     let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
 
-    db.create_table(table_name, Box::new(batches)).execute().await.unwrap();
-
-    let t = db.open_table(table_name).execute().await.unwrap();
+    let t = db.create_table(table_name, Box::new(batches))
+        .mode(CreateTableMode::Overwrite)
+        .execute().await.unwrap();
 
     let n = v2.len();
     if n >= 256 {
         info!("Creating vector index.");
-        t.create_index(&["vector"], Index::Auto).execute().await.unwrap();
+        t.create_index(&["vector"], Index::Auto).
+            execute().await.unwrap();
     } else {
         info!("Skipping vector index: only {n} rows (need >= 256 for PQ training)");
     }

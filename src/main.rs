@@ -180,7 +180,7 @@ fn main() -> iced::Result {
             }
         }*/
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(create_database(filename, &db_name, &table_name));
+        let _ = rt.block_on(create_database(filename, &db_name, &table_name, &mut embedder));
     }
 
     let promptfile = match cli.promptfile {
