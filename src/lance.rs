@@ -4,11 +4,9 @@ use anyhow::{Result, bail};
 // use arrow_array::{RecordBatch, RecordBatchIterator, ArrayRef, Int32Array, StringArray};
 // use arrow_schema::{Schema, Field, DataType};
 
-use lancedb::table::{AddDataMode};
-
-use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
+use std::fs::File;
 
 use log::{debug, info, trace, error};
 
@@ -22,7 +20,6 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_txt};
-use crate::structs::AppConfig;
 
 pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
@@ -33,6 +30,7 @@ pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     rc
 }
 
+// FIXME this still uses the chunker!
 pub async fn append_documents<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
@@ -187,7 +185,8 @@ where
 }
 
 // Returns an empty vec if file not found.
-pub fn read_file_to_vec<P>(filename: P) -> Vec<String>
+// Superceded by read_file_to_vecs(...).
+pub fn _read_file_to_vec<P>(filename: P) -> Vec<String>
 where
     P: AsRef<Path>,
 {
@@ -209,7 +208,9 @@ where
     docs
 }
 
-// Read file prepared by prepare_writings.py
+// Read file prepared by prepare_writings.py.
+// Expected format: meta-info <TAB> info-text
+// The ifo-text is vectorised/searchable.
 pub fn read_file_to_vecs<P>(filename: P) -> (Vec<String>, Vec<String>)
 where
     P: AsRef<Path>,
@@ -221,8 +222,11 @@ where
     if let Ok(lines) = read_lines(&filename) {
         for line in lines {
             if let Ok(content) = line {
-                if content.len() <= 12 { continue; }
-                let mut parts = content.splitn(3, '\t');
+                // Arbitrary limit...
+                if content.len() <= 12 {
+                    continue;
+                }
+                let mut parts = content.splitn(2, '\t');
                 if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
                     trace!("{}\t{}", a, b);
                     col1.push(a.to_owned());
@@ -231,7 +235,7 @@ where
             }
         }
     } else {
-        eprintln!("Could not read file: {}", filename.as_ref().display());
+        error!("Could not read file: {}", filename.as_ref().display());
     }
 
     info!("Row count: {}", col1.len());
@@ -271,7 +275,7 @@ where
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
 
-    // Return the table?
+    // Return the table? Overwrite?
     if let Ok(ref _table) = db.open_table(table_name).execute().await {
         info!("Table {} already exists, skipping.", &table_name);
         return Ok(());
@@ -289,15 +293,13 @@ where
         }
     };*/
 
+    // v1 is the meta-data, v2 the information.
     let (v1, v2) = read_file_to_vecs(&filename);
     
     // let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
 
-    // let ids = Arc::new(Int32Array::from_iter_values(0..(docs.len() as i32)));
     let ids = Arc::new(Int32Array::from_iter_values(0..(v1.len() as i32)));
-    // let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
-    // let texts = Arc::new(arrow_array::StringArray::from_iter_values(docs.iter().cloned()));
     let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
     let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
     let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(

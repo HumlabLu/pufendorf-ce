@@ -190,8 +190,8 @@ fn main() -> iced::Result {
 
     // Have DB connexion here?
     let config = AppConfig {
-        db_path: db_name.clone(), //"data/lancedb_fastembed".into(),
-        table_name: table_name.clone(), //"docs".into(),
+        db_path: db_name.clone(),
+        table_name: table_name.clone(),
         promptfile: promptfile,
         model: "gpt-4o-mini".into(),
         fontsize: cli.fontsize,
