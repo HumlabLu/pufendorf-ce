@@ -11,11 +11,11 @@ use std::fs::File;
 use log::{debug, info, trace, error};
 
 use arrow_array::{
-  ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray
-  
+  ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray, Float32Array
 };
 use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
+
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 use lancedb::database::CreateTableMode;
@@ -25,6 +25,9 @@ use crate::embedder::{chunk_file_pdf, chunk_file_txt};
 pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
 
+    // Create empty table if not exist?
+    // Disadvantage is that once we have a table, we cannot use create anymore because
+    // the table exists...(if we don't replace it).
     let table = db.open_table(table_name).execute().await.expect("Cannot open table");
     let rc = table.count_rows(None).await.expect("?");
 
@@ -325,3 +328,43 @@ where
     Ok(())
 }
 
+pub fn create_empty_batch() -> RecordBatch {
+    let dim = 384;
+
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("abstract", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+            false,
+        ),
+    ]));
+
+    let id_col = Arc::new(Int32Array::from(Vec::<i32>::new()));
+    let abstract_col = Arc::new(StringArray::from(Vec::<String>::new()));
+    let text_col = Arc::new(StringArray::from(Vec::<String>::new()));
+
+    let values = Arc::new(Float32Array::from(Vec::<f32>::new()));
+    let vector_col = Arc::new(
+        FixedSizeListArray::try_new(
+            Arc::new(Field::new("item", DataType::Float32, true)),
+            dim,
+            values,
+            None,
+        ).expect("Cannot create empty vector")
+    );
+
+    let empty_batch = RecordBatch::try_new(
+        schema.clone(),
+        vec![id_col, abstract_col, text_col, vector_col],
+    ).expect("Cannot create empty batch");
+
+    /* db.create_table("docs", empty_batch)
+      .mode(CreateTableMode::ExistOk)
+      .execute()
+      .await?; */
+
+    empty_batch
+}
