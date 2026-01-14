@@ -30,7 +30,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{create_database, append_documents, get_row_count};
+use lance::{create_database, create_empty_table, append_documents, get_row_count};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_array::{
     RecordBatch
@@ -211,7 +211,9 @@ fn main() -> iced::Result {
             None
         }
     };
-    
+
+    // Create empty table if not exist?
+    let _ = rt.block_on(create_empty_table(&db_name, &table_name));
     info!("Row count: {}", rt.block_on(get_row_count(&db_name, &table_name)));
     
 
@@ -580,7 +582,7 @@ fn stream_chat_oai(
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // insert Db/RAG here?
-        let table_name = config.table_name; // "docs".to_string(); // FIXME should be params.
+        let table_name = config.table_name;
         let db: lancedb::Connection = {
             let guard = dbc.lock().unwrap();
             guard.clone().take().expect("Expected a database connection!")

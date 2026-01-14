@@ -328,7 +328,41 @@ where
     Ok(())
 }
 
-pub fn create_empty_batch() -> RecordBatch {
+// Creates if not exists.
+pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), anyhow::Error> {
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
+    let dim = 384;
+    
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Int32, false),
+        Field::new("abstract", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+            false,
+        ),
+    ]));
+
+    info!("Database: {db_name}");
+    info!("Table name: {table_name}");
+
+    // Return the table? Overwrite?
+    // We can overwrite, but return here anyway.
+    if let Ok(ref _table) = db.open_table(table_name).execute().await {
+        debug!("Table {} already exists, skipping.", &table_name);
+        return Ok(());
+    };
+
+    let batch = create_empty_batch();
+    let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
+    let _t = db.create_table(table_name, Box::new(batches))
+        .execute().await.unwrap();
+
+    Ok(())
+}
+
+fn create_empty_batch() -> RecordBatch {
     let dim = 384;
 
     let schema = Arc::new(Schema::new(vec![
