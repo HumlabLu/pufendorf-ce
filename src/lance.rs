@@ -63,6 +63,8 @@ where
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
 
+    // Better top use chunker with a really large chunk value instead?
+    // That gives the same effect?
     if false {
         let starting_id = 0;
         let path = filename.as_ref();
@@ -91,11 +93,11 @@ where
         let dim = embeddings[0].len() as i32;
     }
     
-
     let (v1, v2) = read_file_to_vecs(&filename);
     
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
     let starting_id = 0;
+
     let ids = Arc::new(Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32));
     let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
     let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
@@ -105,9 +107,6 @@ where
             .map(|v| Some(v.iter().copied().map(Some).collect::<Vec<_>>())),
         dim,
     ));
-
-
-
 
     if let Ok(ref table) = db.open_table(table_name).execute().await {
         let schema: Arc<Schema> = table.schema().await.expect("No schema?");
