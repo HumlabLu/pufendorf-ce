@@ -8,7 +8,7 @@ use std::{
 #[derive(Debug, Default, Clone)]
 pub struct ModelOptions {
     pub temperature: f32,
-    pub num_predict: i32,
+    pub num_predict: u32,
 }
 impl ModelOptions {
     pub fn temperature(mut self, temperature: f32) -> Self {
@@ -16,7 +16,7 @@ impl ModelOptions {
         self
     }
 
-    pub fn num_predict(mut self, num_predict: i32) -> Self {
+    pub fn num_predict(mut self, num_predict: u32) -> Self {
         self.num_predict = num_predict;
         self
     }
@@ -57,7 +57,7 @@ pub enum Message {
     TemperatureChanged(f32),
     CutOffChanged(f32),
     MaxContextChanged(u32),
-    NumPredictChanged(i32),
+    NumPredictChanged(u32),
 
     ResetParams,
     ClearAll,
@@ -75,7 +75,7 @@ pub struct App {
     pub mode: Mode,
 
     pub temperature: f32,
-    pub num_predict: i32,
+    pub num_predict: u32,
 
     pub draft: String, // User input
     pub lines: Vec<Line>,

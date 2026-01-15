@@ -344,8 +344,8 @@ pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), a
         ),
     ]));
 
-    info!("Database: {db_name}");
-    info!("Table name: {table_name}");
+    debug!("Database: {db_name}");
+    debug!("Table name: {table_name}");
 
     // Return the table? Overwrite?
     // We can overwrite, but return here anyway.

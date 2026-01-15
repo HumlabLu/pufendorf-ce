@@ -652,11 +652,10 @@ fn stream_chat_oai(
         });
         debug!("{:?}", messages);
 
-        let max_tokens = u32::try_from(opts.num_predict).ok();
         let params = match ChatCompletionParametersBuilder::default()
             .model(model)
             .messages(messages)
-            .max_tokens(max_tokens.unwrap())
+            .max_tokens(opts.num_predict)
             .temperature(opts.temperature)
             .response_format(ChatCompletionResponseFormat::Text)
             .build()
