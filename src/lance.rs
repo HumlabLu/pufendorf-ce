@@ -63,49 +63,75 @@ where
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
 
-    let starting_id = 0;
-    let path = filename.as_ref();
-    let chunks = if path.is_file() {
-        if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-            match ext {
-                "txt" => chunk_file_txt(&filename, 512),
-                "pdf" => chunk_file_pdf(&filename, 512),
-                _ => Err(anyhow::anyhow!("Unsupported file extension: {:?}", ext)),
+    if false {
+        let starting_id = 0;
+        let path = filename.as_ref();
+        let chunks = if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                match ext {
+                    "txt" => chunk_file_txt(&filename, 512),
+                    "pdf" => chunk_file_pdf(&filename, 512),
+                    _ => Err(anyhow::anyhow!("Unsupported file extension: {:?}", ext)),
+                }
+            } else {
+                Err(anyhow::anyhow!("No file extension found"))
             }
         } else {
-            Err(anyhow::anyhow!("No file extension found"))
-        }
-    } else {
-        Err(anyhow::anyhow!("Not a file: {:?}", path))
-    };
-    let new_docs = match chunks {
-        Ok(d) => d,
-        Err(e) => {
-            error!("Aborting: {e}");
-            return Err(e);
-        }
-    };
-    info!("New docs {}", new_docs.len());
-    let embeddings = embedder.embed(new_docs.clone(), None)?;
-    let dim = embeddings[0].len() as i32;
+            Err(anyhow::anyhow!("Not a file: {:?}", path))
+        };
+        let new_docs = match chunks {
+            Ok(d) => d,
+            Err(e) => {
+                error!("Aborting: {e}");
+                return Err(e);
+            }
+        };
+        info!("New docs {}", new_docs.len());
+        let embeddings = embedder.embed(new_docs.clone(), None)?;
+        let dim = embeddings[0].len() as i32;
+    }
+    
+
+    let (v1, v2) = read_file_to_vecs(&filename);
+    
+    let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
+    let starting_id = 0;
+    let ids = Arc::new(Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32));
+    let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
+    let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
+    let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+        doc_embeddings
+            .iter()
+            .map(|v| Some(v.iter().copied().map(Some).collect::<Vec<_>>())),
+        dim,
+    ));
+
+
+
 
     if let Ok(ref table) = db.open_table(table_name).execute().await {
         let schema: Arc<Schema> = table.schema().await.expect("No schema?");
-
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
 
-        /*
-        info!("Schema: {:?}", schema);
-        for f in schema.fields() {
-            info!("col={} type={:?} nullable={}", f.name(), f.data_type(), f.is_nullable());
-        }
-        */
+        columns.push(
+            ids
+        );
+        columns.push(
+            abstracts
+        );
+        columns.push(
+            texts
+        );
+        columns.push(
+            vectors
+        );
 
+        /*
         for field in schema.fields() {
             match field.name().as_str() {
                 "id" => {
                     columns.push(Arc::new(
-                        Int32Array::from_iter_values(starting_id..starting_id + new_docs.len() as i32),
+                        Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32),
                     ) as ArrayRef);
                 }
                 "abstract" => {
@@ -134,7 +160,8 @@ where
                 other => bail!("Unhandled non-nullable column in append: {other}"),
             }
         }
-
+        */
+        
         info!("Preparing batches.");
         let batch = RecordBatch::try_new(schema.clone(), columns)?;
         let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
@@ -161,7 +188,7 @@ where
         merge_insert.execute(Box::new(batches)).await.expect("Merge insert failed.");
 
         // Not updated?
-        info!("Row count {:?}", table.count_rows(None).await.expect("Cannot count rows!"));
+        info!("Row count now {:?}", table.count_rows(None).await.expect("Cannot count rows!"));
     } else {
         info!("Cannot open table?");
     }
@@ -456,7 +483,7 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
                 .unwrap()
                 .values();
 
-            info!("{}|{}|{}|{:6.3?}", id, &astract[..12], &text[..24], &vec[..3.min(vec.len())]);
+            info!("{}|{}|{}|{:6.3?}", id, &astract[..12.min(astract.len())], &text[..24], &vec[..3.min(vec.len())]);
             debug!("id={id}");
             debug!("abstract={astract}");
             debug!("text={text}");
