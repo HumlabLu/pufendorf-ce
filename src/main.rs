@@ -234,8 +234,6 @@ fn main() -> iced::Result {
             None
         }
     };
-    // Probably does not have to be an Arc/Mutex.
-    let db_connexion = Arc::new(Mutex::new(dbc));
 
     // Have DB connexion here?
     let config = AppConfig {
@@ -246,9 +244,8 @@ fn main() -> iced::Result {
         fontsize: cli.fontsize,
         cut_off: cli.cutoff,
         max_context: 12,
-        db_connexion: db_connexion,
+        db_connexion: Arc::new(Mutex::new(dbc)),
         embedder: Arc::new(Mutex::new(embedder)),
-
     };
 
     iced::application(
@@ -261,11 +258,6 @@ fn main() -> iced::Result {
         .theme(theme)
         .settings(Settings::default())
         .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
-        /*
-        .settings(Settings {
-            default_text_size: 24.into(),
-            ..Settings::default()
-        })*/
         .run()
 }
 
