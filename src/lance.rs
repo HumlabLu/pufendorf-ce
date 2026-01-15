@@ -455,11 +455,11 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
                 .unwrap()
                 .values();
 
-            println!("id={id}");
-            println!("abstract={astract}");
-            println!("text={text}");
-            println!("vector[..3]={:?}", &vec[..3.min(vec.len())]);
-            println!("");
+            info!("{}|{}|{}|{:6.3?}", id, &astract[..12], &text[..24], &vec[..3.min(vec.len())]);
+            debug!("id={id}");
+            debug!("abstract={astract}");
+            debug!("text={text}");
+            debug!("vector[..3]={:?}", &vec[..3.min(vec.len())]);
         }
     }
 

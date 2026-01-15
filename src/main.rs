@@ -171,11 +171,6 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
-    if cli.dump > 0 {
-        let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(dump_table(&db_name, &table_name, cli.dump));
-    }
-    
     if let Some(ref filename) = cli.filename {
         info!("Filename {filename}.");
         /*
@@ -224,6 +219,10 @@ fn main() -> iced::Result {
     let _ = rt.block_on(create_empty_table(&db_name, &table_name));
     info!("Row count: {}", rt.block_on(get_row_count(&db_name, &table_name)));
     
+    if cli.dump > 0 {
+        let rt = Runtime::new().unwrap();
+        let _ = rt.block_on(dump_table(&db_name, &table_name, cli.dump));
+    }
 
     iced::application(
         move || App::new(config.clone()),
