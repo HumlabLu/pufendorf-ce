@@ -45,6 +45,7 @@ mod structs;
 use structs::*;
 
 mod embedder;
+use embedder::parse_embedding_model;
 
 use std::env;
 
@@ -67,6 +68,9 @@ struct Cli {
 
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
+
+    #[arg(short, long, help = "Embedding model.", default_value = "all-minilm-l6-v2")]
+    embedmodel: String,
 
     #[arg(long, help = "Dump DB contents.", default_value_t = 0)]
     dump: usize,
@@ -145,14 +149,16 @@ fn main() -> iced::Result {
 
     // ------------ New Db stuff
     
+    let embedmodel = parse_embedding_model(&cli.embedmodel).expect("Error");
+
     // Embedding model (downloads once, then runs locally).
     // See also embedder.rs
     let mut embedder = TextEmbedding::try_new(
-        InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
+        InitOptions::new(embedmodel.clone()).with_show_download_progress(true),
     ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
-    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
+    let model_info = TextEmbedding::get_model_info(&embedmodel);
     let dim = model_info.unwrap().dim as i32;
     info!("Embedding dim {}", dim);
 
