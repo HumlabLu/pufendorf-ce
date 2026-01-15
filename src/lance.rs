@@ -402,3 +402,66 @@ fn create_empty_batch() -> RecordBatch {
 
     empty_batch
 }
+
+pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(), anyhow::Error> {
+    let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
+    let table = db.open_table(table_name).execute().await.expect("Cannot open table");
+    use lancedb::query::QueryBase;
+    use lancedb::query::ExecutableQuery;
+    use iced::futures::TryStreamExt;
+
+    let results: Vec<RecordBatch> = table
+        .query()
+        .limit(lim)
+        .execute()
+        .await.expect("err")
+        .try_collect()
+        .await.expect("err");
+
+    for batch in &results {
+        let ids = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .unwrap();
+
+        let abstracts = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let texts = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+
+        let vectors = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .unwrap();
+
+        for i in 0..batch.num_rows() {
+            let id = ids.value(i);
+            let astract = abstracts.value(i);
+            let text = texts.value(i);
+
+            let vec_values = vectors.value(i);
+            let vec = vec_values
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .unwrap()
+                .values();
+
+            println!("id={id}");
+            println!("abstract={astract}");
+            println!("text={text}");
+            println!("vector[..3]={:?}", &vec[..3.min(vec.len())]);
+            println!("");
+        }
+    }
+
+    Ok(())
+}

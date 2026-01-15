@@ -30,7 +30,7 @@ use std::io::Write;
 use std::str::FromStr;
 
 mod lance;
-use lance::{create_database, create_empty_table, append_documents, get_row_count};
+use lance::{create_database, create_empty_table, append_documents, get_row_count, dump_table};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_array::{
     RecordBatch
@@ -67,6 +67,9 @@ struct Cli {
 
     #[arg(short, long, help = "DB name.")]
     dbname: Option<String>,
+
+    #[arg(long, help = "Dump DB contents.", default_value_t = 0)]
+    dump: usize,
 
     #[arg(short, long, help = "Text file with info.")]
     filename: Option<String>,
@@ -168,6 +171,11 @@ fn main() -> iced::Result {
     };
     info!("Table name: {table_name}");
 
+    if cli.dump > 0 {
+        let rt = Runtime::new().unwrap();
+        let _ = rt.block_on(dump_table(&db_name, &table_name, cli.dump));
+    }
+    
     if let Some(ref filename) = cli.filename {
         info!("Filename {filename}.");
         /*
@@ -673,7 +681,6 @@ fn stream_chat_oai(
         };
 
         let mut tracked = RoleTrackingStream::new(stream0);
-
         let mut assistant_acc = String::new();
 
         while let Some(item) = tracked.next().await {
@@ -689,7 +696,11 @@ fn stream_chat_oai(
                         }
                     }
                 }
-                Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+                Err(e) => {
+                    yield Message::LlmErr(e.to_string());
+                    yield Message::LlmDone;
+                    return;
+                }
             }
         }
 
