@@ -309,10 +309,6 @@ impl App {
 
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
-
-            // db_connexion: db_connexion,
-            // embedder: Arc::new(Mutex::new(embedder)),
-            
         }, Task::none())
     }
 
@@ -450,11 +446,7 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // const MY_FONT: iced::Font = iced::Font::with_name("JetBrainsMonoNL NFM");
         const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
-        // const MY_SIZE: u32 = 20;
-
-        // info!("{:?}", self.config.db_path);
         
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
@@ -534,7 +526,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
             content: Some(content),
             reasoning_content: None,
             refusal: None,
-            name: None, //Some("Pufendorf".to_string()), // TODO check?
+            name: None,
             audio: None,
             tool_calls: None,
         },
@@ -564,7 +556,6 @@ fn stream_chat_oai(
         let result = client.moderations().create(parameters).await.unwrap();
         let cats = &result.results[0].category_scores;
         let _flagged = result.results[0].flagged;
-        // println!("Mod: {:?}", cats);
         
         // The moderator is very strict, we check scores.
         let mut flagged = false;
@@ -589,7 +580,7 @@ fn stream_chat_oai(
         debug!("Searching context.");
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
-        // insert Db/RAG here?
+        // Insert Db/RAG here?) //
         let table_name = config.table_name;
         let db: lancedb::Connection = {
             let guard = config.db_connexion.lock().unwrap();
