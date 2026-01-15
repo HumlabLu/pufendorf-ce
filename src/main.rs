@@ -289,6 +289,7 @@ impl App {
         ));
 
         // Alternative way? which is best?
+        /*
         let rt = Runtime::new().unwrap();
         let dbc: Option<lancedb::Connection> = match rt.block_on(connect_db(config.db_path.clone())) {
             Ok(db) => Some(db),
@@ -299,7 +300,7 @@ impl App {
         };
         // Probably does not have to be an Arc/Mutex.
         let db_connexion = Arc::new(Mutex::new(dbc));
-
+        */
         let embedder = TextEmbedding::try_new(
                     InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(true),
                 ).expect("Embedder failed!");
