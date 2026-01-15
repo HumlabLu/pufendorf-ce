@@ -5,6 +5,16 @@ use std::path::Path;
 use std::path::PathBuf;
 use text_splitter::TextSplitter;
 
+// let model = parse_embedding_model(cli.emodel).expect("bleh");
+pub fn parse_embedding_model(model: &str) -> Result<EmbeddingModel, String> {
+    match model.to_lowercase().as_str() {
+        "all-minilm-l6-v2" | "allminilml6v2" => Ok(EmbeddingModel::AllMiniLML6V2),
+        "all-MiniLM-L12-v2" => Ok(EmbeddingModel::AllMiniLML12V2),
+        "bge-base-en-v1.5" => Ok(EmbeddingModel::BGEBaseENV15),
+        _ => Err(format!("Unknown embedding model {model}")),
+    }
+}
+
 // Use textsplitter-rs.
 /*
 text_splitter = RecursiveCharacterTextSplitter(
