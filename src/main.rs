@@ -121,6 +121,12 @@ async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
     lancedb::connect(&db_name).execute().await
 }
 
+/*
+    We have too many structs -- a struct for the Iced app, and another AppConfig
+    struct to move settings from main to the app.
+
+    The AppConfig should prolly also contain the embedding model and DB connexion.
+*/
 fn main() -> iced::Result {
     let cli = Cli::parse();
 
@@ -195,17 +201,6 @@ fn main() -> iced::Result {
         None => "assets/chatprompts.json".to_string()
     };
 
-    // Have DB connexion here?
-    let config = AppConfig {
-        db_path: db_name.clone(),
-        table_name: table_name.clone(),
-        promptfile: promptfile,
-        model: "gpt-4o-mini".into(),
-        fontsize: cli.fontsize,
-        cut_off: cli.cutoff,
-        max_context: 12,
-    };
-
     if let Some(ref filename) = cli.append{
         info!("Append filename {filename}.");
         let rt = Runtime::new().unwrap();
@@ -229,6 +224,32 @@ fn main() -> iced::Result {
         let rt = Runtime::new().unwrap();
         let _ = rt.block_on(dump_table(&db_name, &table_name, cli.dump));
     }
+
+    // Alternative way? which is best?
+    let rt = Runtime::new().unwrap();
+    let dbc: Option<lancedb::Connection> = match rt.block_on(connect_db(db_name.clone())) {
+        Ok(db) => Some(db),
+        Err(e) => {
+            error!("DB Error! {e}");
+            None
+        }
+    };
+    // Probably does not have to be an Arc/Mutex.
+    let db_connexion = Arc::new(Mutex::new(dbc));
+
+    // Have DB connexion here?
+    let config = AppConfig {
+        db_path: db_name.clone(),
+        table_name: table_name.clone(),
+        promptfile: promptfile,
+        model: "gpt-4o-mini".into(),
+        fontsize: cli.fontsize,
+        cut_off: cli.cutoff,
+        max_context: 12,
+        db_connexion: db_connexion,
+        embedder: Arc::new(Mutex::new(embedder)),
+
+    };
 
     iced::application(
         move || App::new(config.clone()),
@@ -313,8 +334,8 @@ impl App {
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
 
-            db_connexion: db_connexion,
-            embedder: Arc::new(Mutex::new(embedder)),
+            // db_connexion: db_connexion,
+            // embedder: Arc::new(Mutex::new(embedder)),
             
         }, Task::none())
     }
@@ -401,7 +422,7 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.db_connexion.clone(), self.embedder.clone(), self.config.clone())
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                 };
@@ -549,8 +570,6 @@ fn stream_chat_oai(
     user_prompt: String,
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
-    dbc: Arc<Mutex<Option<lancedb::Connection>>>,
-    embedder: Arc<Mutex<TextEmbedding>>,
     config: AppConfig,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
@@ -597,12 +616,12 @@ fn stream_chat_oai(
         // insert Db/RAG here?
         let table_name = config.table_name;
         let db: lancedb::Connection = {
-            let guard = dbc.lock().unwrap();
+            let guard = config.db_connexion.lock().unwrap();
             guard.clone().take().expect("Expected a database connection!")
         };
 
         let q = {
-            let mut e = embedder.lock().unwrap();
+            let mut e = config.embedder.lock().unwrap();
             e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
         };
         let qv = &q[0];

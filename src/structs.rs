@@ -85,9 +85,6 @@ pub struct App {
 
     pub system_prompt: String,
     pub extra_info: String,
-
-    pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
-    pub embedder: Arc<Mutex<TextEmbedding>>,
 }
 
 #[derive(Clone)]
@@ -99,4 +96,6 @@ pub struct AppConfig {
     pub fontsize: u32,
     pub cut_off: f32,
     pub max_context: u32,
+    pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    pub embedder: Arc<Mutex<TextEmbedding>>,
 }
