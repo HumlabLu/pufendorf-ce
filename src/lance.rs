@@ -19,6 +19,9 @@ use arrow_schema::{DataType, Field, Schema};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use lancedb::index::Index;
 use lancedb::database::CreateTableMode;
+use lancedb::query::{QueryBase, ExecutableQuery};
+
+use iced::futures::TryStreamExt;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_txt};
 
@@ -406,9 +409,6 @@ fn create_empty_batch() -> RecordBatch {
 pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(), anyhow::Error> {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
     let table = db.open_table(table_name).execute().await.expect("Cannot open table");
-    use lancedb::query::QueryBase;
-    use lancedb::query::ExecutableQuery;
-    use iced::futures::TryStreamExt;
 
     let results: Vec<RecordBatch> = table
         .query()
@@ -418,6 +418,7 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
         .try_collect()
         .await.expect("err");
 
+    // FIXME use schema, as we do in stream_oai().
     for batch in &results {
         let ids = batch
             .column(0)
