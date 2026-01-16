@@ -481,7 +481,7 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
                 .unwrap()
                 .values();
 
-            info!("{}|{}|{}|{:6.3?}", id, &astract[..12.min(astract.len())], &text[..24], &vec[..3.min(vec.len())]);
+            info!("{}|{}|{}|{:6.3?}", id, &astract[..12.min(astract.len())], &text[..24.min(text.len())], &vec[..3.min(vec.len())]);
             debug!("id={id}");
             debug!("abstract={astract}");
             debug!("text={text}");

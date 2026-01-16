@@ -8316,6 +8316,7 @@ dependencies = [
  "text-splitter",
  "tokio",
  "tokio-stream",
+ "uuid",
 ]
 
 [[package]]
