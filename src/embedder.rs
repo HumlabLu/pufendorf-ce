@@ -90,24 +90,23 @@ pub fn chunk_file_prefix_txt<P: AsRef<Path>>(
     let mut col1 = Vec::new();
     let mut col2 = Vec::new();
 
-    if let lines = io::BufReader::new(file).lines() {
-        for line in lines {
-            if let Ok(content) = line {
-                // Arbitrary limit...
-                if content.len() <= 12 {
-                    continue;
-                }
-                let mut parts = content.splitn(3, '\t');
-                if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
-                    // trace!("{}\t{}", a, b);
-                    let (prefixes, chunks) = chunk_string_prefix(b, a, chunk_size); // text, prefix, len
-                    col1.extend(prefixes);
-                    col2.extend(chunks);
-                }
+    let lines = io::BufReader::new(file).lines();
+    for (i, line) in lines.enumerate() {
+        if let Ok(content) = line {
+            // Arbitrary limit...
+            if content.len() <= 12 {
+                continue;
+            }
+            let mut parts = content.splitn(3, '\t');
+            if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
+                // trace!("{}\t{}", a, b);
+                let prefix = format!("{}-{}-", a.trim(), i); // chunker adds an index too.
+                println!("{}", &prefix);
+                let (prefixes, chunks) = chunk_string_prefix(b.trim(), &prefix, chunk_size); // text, prefix, len
+                col1.extend(prefixes);
+                col2.extend(chunks);
             }
         }
-    } else {
-        eprintln!("Could not read file: {}", path.as_ref().display());
     }
 
     Ok((col1, col2))
@@ -272,7 +271,7 @@ mod tests {
         let (v1, v2) = chunk_file_prefix_txt(data_path, 128).expect("No file");
         dbg!("{:?}", &v1);
         dbg!("{:?}", &v2);
-        assert!(v1[1] == "BOOK EXTRA/CHAPTER STANFORD/Encyclopedia 1");
+        assert!(v1[1] == "BOOK EXTRA/CHAPTER STANFORD/Encyclopedia-0-1");
         assert!(
             v2[1]
                 == "Your approach was secular, non-metaphysical, and anti-authoritarian; it eschewed religious appeals, scholastic"
