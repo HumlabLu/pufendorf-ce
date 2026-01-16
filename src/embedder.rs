@@ -1,4 +1,5 @@
 use fastembed::{Embedding, EmbeddingModel, InitOptions, TextEmbedding};
+use log::trace;
 use std::fs;
 use std::fs::read_dir;
 use std::fs::File;
@@ -99,9 +100,8 @@ pub fn chunk_file_prefix_txt<P: AsRef<Path>>(
             }
             let mut parts = content.splitn(3, '\t');
             if let (Some(a), Some(b)) = (parts.next(), parts.next()) {
-                // trace!("{}\t{}", a, b);
+                trace!("{}\t{}", a, b);
                 let prefix = format!("{}-{}-", a.trim(), i); // chunker adds an index too.
-                println!("{}", &prefix);
                 let (prefixes, chunks) = chunk_string_prefix(b.trim(), &prefix, chunk_size); // text, prefix, len
                 col1.extend(prefixes);
                 col2.extend(chunks);
