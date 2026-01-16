@@ -32,6 +32,21 @@ pub fn chunk_string(text: &str, max_len: usize) -> Vec<String> {
     splitter.chunks(text).map(|v| v.to_string()).collect()
 }
 
+pub fn chunk_string_prefix(text: &str, prefix: &str, max_len: usize) -> (Vec<String>, Vec<String>) {
+    let max_characters = max_len - 25..max_len + 25;
+    let splitter = TextSplitter::new(max_characters);
+
+    let mut prefixes = Vec::new();
+    let mut chunks = Vec::new();
+
+    for (i, chunk) in splitter.chunks(text).enumerate() {
+        prefixes.push(format!("{prefix}{}", i));
+        chunks.push(chunk.to_string());
+    }
+
+    (prefixes, chunks)
+}
+
 // Return a vector with filenames with correct extension.
 pub fn read_dir_contents<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<PathBuf>> {
     // Read the directory
@@ -175,6 +190,33 @@ mod tests {
         dbg!("{:?}", &result);
         assert!(
             result[0]
+                == "the quick brown fox jumps over the lazy dog. And another sentence. Seven!"
+        );
+    }
+
+    #[test]
+    fn prefix_chunk_a_string() {
+        let text =
+            "the quick brown fox jumps over the lazy dog. And another sentence. Seven!".to_string();
+        let (prefixes, results): (Vec<_>, Vec<_>) = chunk_string_prefix(&text, "PREFIX", 28);
+        dbg!("{:?}", &prefixes);
+        dbg!("{:?}", &results);
+        assert!(prefixes[0] == "PREFIX0");
+        assert!(results[0] == "the quick brown fox jumps over the lazy dog.");
+        // assert!(result[1] == "And another sentence.");
+        // assert!(result[2] == "Seven!");
+    }
+
+    #[test]
+    fn prefix_large_chunk() {
+        let text =
+            "the quick brown fox jumps over the lazy dog. And another sentence. Seven!".to_string();
+        let (prefixes, results): (Vec<_>, Vec<_>) = chunk_string_prefix(&text, "PREFIX", 1024);
+        dbg!("{:?}", &prefixes);
+        dbg!("{:?}", &results);
+        assert!(prefixes[0] == "PREFIX0");
+        assert!(
+            results[0]
                 == "the quick brown fox jumps over the lazy dog. And another sentence. Seven!"
         );
     }

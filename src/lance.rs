@@ -66,7 +66,6 @@ where
     // Better top use chunker with a really large chunk value instead?
     // That gives the same effect?
     if false {
-        let starting_id = 0;
         let path = filename.as_ref();
         let chunks = if path.is_file() {
             if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
@@ -90,7 +89,6 @@ where
         };
         info!("New docs {}", new_docs.len());
         let embeddings = embedder.embed(new_docs.clone(), None)?;
-        let dim = embeddings[0].len() as i32;
     }
     
     let (v1, v2) = read_file_to_vecs(&filename);
