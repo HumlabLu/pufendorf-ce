@@ -23,7 +23,7 @@ use lancedb::query::{QueryBase, ExecutableQuery};
 
 use iced::futures::TryStreamExt;
 
-use crate::embedder::{chunk_file_pdf, chunk_file_txt};
+use crate::embedder::{chunk_file_pdf, chunk_file_prefix_txt, chunk_file_txt};
 
 pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
@@ -37,7 +37,6 @@ pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     rc
 }
 
-// FIXME this still uses the chunker!
 pub async fn append_documents<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
@@ -91,7 +90,8 @@ where
         let embeddings = embedder.embed(new_docs.clone(), None)?;
     }
     
-    let (v1, v2) = read_file_to_vecs(&filename);
+    // let (v1, v2) = read_file_to_vecs(&filename);
+    let (v1, v2) = chunk_file_prefix_txt(&filename, 1280).expect("No file");
     
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
     let starting_id = 0;
@@ -304,7 +304,7 @@ where
     // Return the table? Overwrite?
     // We can overwrite, but return here anyway.
     if let Ok(ref _table) = db.open_table(table_name).execute().await {
-        info!("Table {} already exists, replacing.", &table_name);
+        info!("Table {} already exists, skipping.", &table_name);
         return Ok(());
     };
 
@@ -321,7 +321,8 @@ where
     };*/
 
     // v1 is the meta-data, v2 the information.
-    let (v1, v2) = read_file_to_vecs(&filename);
+    // let (v1, v2) = read_file_to_vecs(&filename);
+    let (v1, v2) = chunk_file_prefix_txt(&filename, 1280).expect("No file");
     
     // let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();

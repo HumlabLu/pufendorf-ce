@@ -103,6 +103,7 @@ pub fn chunk_file_prefix_txt<P: AsRef<Path>>(
                 trace!("{}\t{}", a, b);
                 let prefix = format!("{}-{}-", a.trim(), i); // chunker adds an index too.
                 let (prefixes, chunks) = chunk_string_prefix(b.trim(), &prefix, chunk_size); // text, prefix, len
+                trace!("{:?}", &prefixes);
                 col1.extend(prefixes);
                 col2.extend(chunks);
             }
