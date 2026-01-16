@@ -37,7 +37,7 @@ pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     rc
 }
 
-pub async fn append_documents<P>(filename: P, db_name: &str, table_name: &str) -> Result<(), anyhow::Error>
+pub async fn append_documents<P>(filename: P, db_name: &str, table_name: &str, chunk_size: usize) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -69,8 +69,8 @@ where
         let chunks = if path.is_file() {
             if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
                 match ext {
-                    "txt" => chunk_file_txt(&filename, 512),
-                    "pdf" => chunk_file_pdf(&filename, 512),
+                    "txt" => chunk_file_txt(&filename, chunk_size),
+                    "pdf" => chunk_file_pdf(&filename, chunk_size),
                     _ => Err(anyhow::anyhow!("Unsupported file extension: {:?}", ext)),
                 }
             } else {
@@ -91,7 +91,7 @@ where
     }
     
     // let (v1, v2) = read_file_to_vecs(&filename);
-    let (v1, v2) = chunk_file_prefix_txt(&filename, 1280).expect("No file");
+    let (v1, v2) = chunk_file_prefix_txt(&filename, chunk_size).expect("No file");
     
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
     let starting_id = 0;
@@ -275,7 +275,7 @@ where
 
 // The db_name and table_name are hardcoded!
 // Filename argument reads the data for a new database.
-pub async fn create_database<P>(filename: P, db_name: &str, table_name: &str, embedder: &mut TextEmbedding) -> Result<(), anyhow::Error>
+pub async fn create_database<P>(filename: P, db_name: &str, table_name: &str, embedder: &mut TextEmbedding, chunk_size: usize) -> Result<(), anyhow::Error>
 where
     P: AsRef<Path>,
 {
@@ -322,7 +322,7 @@ where
 
     // v1 is the meta-data, v2 the information.
     // let (v1, v2) = read_file_to_vecs(&filename);
-    let (v1, v2) = chunk_file_prefix_txt(&filename, 1280).expect("No file");
+    let (v1, v2) = chunk_file_prefix_txt(&filename, chunk_size).expect("No file");
     
     // let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();

@@ -63,6 +63,9 @@ struct Cli {
     #[arg(short, long, help = "Append text file with info.")]
     append: Option<String>,
 
+    #[arg(long, help = "Chunk size.", default_value_t = 4096)]
+    chunksize: usize,
+
     #[arg(short, long, help = "Retrieval cut off.", default_value_t = 1.5)]
     cutoff: f32,
 
@@ -185,15 +188,9 @@ fn main() -> iced::Result {
 
     if let Some(ref filename) = cli.filename {
         info!("Filename {filename}.");
-        /*
-        let chunks = chunk_file_txt(filename, 512);
-        if let Ok(lines) = chunks {
-            for line in lines {
-                println!("{:?}", line);
-            }
-        }*/
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(create_database(filename, &db_name, &table_name, &mut embedder));
+        // cli.chunksize
+        let _ = rt.block_on(create_database(filename, &db_name, &table_name, &mut embedder, cli.chunksize));
     }
 
     let promptfile = match cli.promptfile {
@@ -204,7 +201,7 @@ fn main() -> iced::Result {
     if let Some(ref filename) = cli.append{
         info!("Append filename {filename}.");
         let rt = Runtime::new().unwrap();
-        let _ = rt.block_on(append_documents(filename, &db_name, &table_name));
+        let _ = rt.block_on(append_documents(filename, &db_name, &table_name, cli.chunksize));
     }
 
     let rt = Runtime::new().unwrap();
@@ -246,6 +243,7 @@ fn main() -> iced::Result {
         max_context: 12,
         db_connexion: Arc::new(Mutex::new(dbc)),
         embedder: Arc::new(Mutex::new(embedder)),
+        chunk_size: cli.chunksize,
     };
 
     iced::application(

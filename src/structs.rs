@@ -98,4 +98,5 @@ pub struct AppConfig {
     pub max_context: u32,
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
     pub embedder: Arc<Mutex<TextEmbedding>>,
+    pub chunk_size: usize,
 }
