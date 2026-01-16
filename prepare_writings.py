@@ -28,5 +28,28 @@ def main():
                     if len(line) > 2:
                         par += line + " "
 
+def lucris():
+    # NB don't use with OpenAI
+    filenames = ["../lucris-rs/all_text.txt"]
+    names = ""
+    title = ""
+    text = ""
+    for filename in filenames:
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("NAMES"):
+                    names = line[6:]
+                    # print(book)
+                elif line.startswith("TITLE"):
+                    title = line[6:]
+                elif line.startswith("ABSTRACT"):
+                    if len(line) > 12:
+                        print(names+"/"+title, '\t', line[9:] + "("+names+")")
+                    names = ""
+                    title = ""
+                    text = ""
+
 if __name__ == "__main__":
-    main()
+    # main()
+    lucris()
