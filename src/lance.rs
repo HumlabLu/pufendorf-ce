@@ -24,6 +24,7 @@ use lancedb::query::{QueryBase, ExecutableQuery};
 use iced::futures::TryStreamExt;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_prefix_txt, chunk_file_txt};
+use uuid::Uuid;
 
 pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
@@ -96,7 +97,10 @@ where
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
     let starting_id = 0;
 
-    let ids = Arc::new(Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32));
+    // let ids = Arc::new(Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32));
+    let ids = Arc::new(StringArray::from_iter_values(
+        (0..v1.len()).map(|_| Uuid::now_v7().to_string()),
+    ));
     let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
     let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
     let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
@@ -123,42 +127,6 @@ where
             vectors
         );
 
-        /*
-        for field in schema.fields() {
-            match field.name().as_str() {
-                "id" => {
-                    columns.push(Arc::new(
-                        Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32),
-                    ) as ArrayRef);
-                }
-                "abstract" => {
-                    columns.push(Arc::new(
-                        StringArray::from_iter_values(new_docs.iter().cloned()),
-                    ) as ArrayRef);
-                }
-                "text" => {
-                    columns.push(Arc::new(
-                        StringArray::from_iter_values(new_docs.iter().cloned()),
-                    ) as ArrayRef);
-                }
-                "vector" => {
-                    columns.push(Arc::new(
-                        FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
-                            embeddings.iter().map(|v| {
-                                Some(v.iter().copied().map(Some).collect::<Vec<_>>())
-                            }),
-                            dim,
-                        ),
-                    ) as ArrayRef);
-                }
-                _ if field.is_nullable() => {
-                    columns.push(arrow_array::new_null_array(field.data_type(), new_docs.len()));
-                }
-                other => bail!("Unhandled non-nullable column in append: {other}"),
-            }
-        }
-        */
-        
         info!("Preparing batches.");
         let batch = RecordBatch::try_new(schema.clone(), columns)?;
         let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema);
@@ -288,7 +256,7 @@ where
 
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
     let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
+        Field::new("id", DataType::Utf8, false),
         Field::new("abstract", DataType::Utf8, false),
         Field::new("text", DataType::Utf8, false),
         Field::new(
@@ -327,7 +295,10 @@ where
     // let doc_embeddings = embedder.embed(docs.clone(), None).unwrap();
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
 
-    let ids = Arc::new(Int32Array::from_iter_values(0..(v1.len() as i32)));
+    // let ids = Arc::new(Int32Array::from_iter_values(0..(v1.len() as i32)));
+    let ids = Arc::new(StringArray::from_iter_values(
+        (0..v1.len()).map(|_| Uuid::now_v7().to_string()),
+    ));
     let abstracts = Arc::new(arrow_array::StringArray::from_iter_values(v1.iter().cloned()));
     let texts = Arc::new(arrow_array::StringArray::from_iter_values(v2.iter().cloned()));
     let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
@@ -362,7 +333,7 @@ pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), a
     let dim = 384;
     
     let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
+        Field::new("id", DataType::Utf8, false),
         Field::new("abstract", DataType::Utf8, false),
         Field::new("text", DataType::Utf8, false),
         Field::new(
@@ -394,7 +365,7 @@ fn create_empty_batch() -> RecordBatch {
     let dim = 384;
 
     let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Int32, false),
+        Field::new("id", DataType::Utf8, false),
         Field::new("abstract", DataType::Utf8, false),
         Field::new("text", DataType::Utf8, false),
         Field::new(
@@ -404,7 +375,8 @@ fn create_empty_batch() -> RecordBatch {
         ),
     ]));
 
-    let id_col = Arc::new(Int32Array::from(Vec::<i32>::new()));
+    // let id_col = Arc::new(Int32Array::from(Vec::<i32>::new()));
+    let id_col = Arc::new(StringArray::from(Vec::<String>::new()));
     let abstract_col = Arc::new(StringArray::from(Vec::<String>::new()));
     let text_col = Arc::new(StringArray::from(Vec::<String>::new()));
 
@@ -448,7 +420,7 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
         let ids = batch
             .column(0)
             .as_any()
-            .downcast_ref::<Int32Array>()
+            .downcast_ref::<StringArray>()
             .unwrap();
 
         let abstracts = batch
@@ -481,7 +453,7 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
                 .unwrap()
                 .values();
 
-            info!("{}|{}|{}|{:6.3?}", id, &astract[..12.min(astract.len())], &text[..24.min(text.len())], &vec[..3.min(vec.len())]);
+            info!("{}|{}|{}|{:6.3?}", &id[24.min(id.len())..], &astract[..12.min(astract.len())], &text[..24.min(text.len())], &vec[..3.min(vec.len())]);
             debug!("id={id}");
             debug!("abstract={astract}");
             debug!("text={text}");
