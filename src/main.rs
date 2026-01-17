@@ -35,9 +35,9 @@ use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_array::{
     RecordBatch
 };
-use lancedb::query::QueryBase;
-use lancedb::query::ExecutableQuery;
-use iced::futures::TryStreamExt;
+use lancedb::query::{ExecutableQuery, QueryBase, Select};
+use lancedb::index::scalar::FullTextSearchQuery;use iced::futures::TryStreamExt;
+use lancedb::rerankers::rrf::RRFReranker;
 use arrow_array::{Float32Array, StringArray, Array};
 use tokio::runtime::Runtime;
 
@@ -630,7 +630,74 @@ fn stream_chat_oai(
                         }
                     });
                 info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
-            }
+            } // for
+
+
+            let k_final = config.max_context as usize;
+            let k_candidates = k_final * 5;
+
+
+            let fts = FullTextSearchQuery::new(user_prompt.to_string())
+                .with_column("abstract".to_string()).expect("err");
+            let stream = table.query()
+                .full_text_search(fts)
+                .limit(20)
+                .execute()
+                .await.expect("err");
+
+            let results: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
+            // println!("{:?}", batches);
+            for b in &results {
+                let abstract_idx = b.schema().index_of("abstract").expect("err");
+                let text_idx = b.schema().index_of("text").expect("err");
+                let dist_idx = b.schema().index_of("_score").expect("err");
+
+                let abstracts = b.column(abstract_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+                let (retrieved, min_dist, max_dist) =
+                    (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    
+                        let dist = dists.value(i);
+                        let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
+                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+
+                        let min_d = min_d.min(dist);
+                        let max_d = max_d.max(dist);
+
+                        if dist < config.cut_off {
+                            debug!("{dist:.3} * {astract}: {text}");
+                            context += text;
+                            (cnt + 1, min_d, max_d)
+                        } else {
+                            debug!("{dist:.3}   {astract}: {text}");
+                            (cnt, min_d, max_d)
+                        }
+                    });
+                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
+            } // for
+
+            /*
+            let k_final = config.max_context as usize;
+
+            // Typically fetch more candidates than you finally show.
+            let k_candidates = k_final * 5;
+
+            let reranker = Arc::new(RRFReranker::new(60.0));
+
+            let results: Vec<RecordBatch> = table
+              .query()
+              .nearest_to(qv.as_slice()).expect("err")
+              .full_text_search(FullTextSearchQuery::new("married".clone().into()))
+              .rerank(reranker)
+              .limit(k_candidates)
+              .refine_factor(4)
+              .execute()
+              .await.expect("err")
+              .try_collect()
+              .await.expect("err");
+              */
         };
 
         let mut messages: Vec<ChatMessage> = {

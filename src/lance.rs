@@ -324,6 +324,11 @@ where
         info!("Skipping vector index: only {n} rows (need >= 256 for PQ training)");
     }
 
+    // BM25indexer
+    t.create_index(&["abstract"], Index::FTS(Default::default()))
+        .execute()
+        .await?;
+
     Ok(())
 }
 
