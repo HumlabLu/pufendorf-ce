@@ -105,7 +105,7 @@ pub struct AppConfig {
 pub struct Candidate {
     pub id: String,
     pub text: String,
-    pub abstract_: String,
-    pub ann_dist: Option<f32>,
+    pub astract: String,
+    pub vec_dist: Option<f32>,
     pub fts_score: Option<f32>,
 }

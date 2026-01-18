@@ -533,7 +533,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
     }
 }
 
-fn push_ann_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
+fn push_vec_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
     let id_idx = b.schema().index_of("id").expect("id col");
     let a_idx = b.schema().index_of("abstract").expect("abstract");
     let t_idx = b.schema().index_of("text").expect("text");
@@ -548,9 +548,9 @@ fn push_ann_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
         let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
         out.push(Candidate{
             id,
-            abstract_: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
+            astract: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
             text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
-            ann_dist: Some(dists.value(i)),
+            vec_dist: Some(dists.value(i)),
             fts_score: None,
         });
     }
@@ -571,23 +571,23 @@ fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
         let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
         out.push(Candidate{
             id,
-            abstract_: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
+            astract: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
             text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
-            ann_dist: None,
+            vec_dist: None,
             fts_score: Some(scores.value(i)),
         });
     }
 }
 
-fn dedupe_by_id(cands: Vec<Candidate>) -> Vec<Candidate> {
+fn dedupe_by_id(candidates: Vec<Candidate>) -> Vec<Candidate> {
     let mut m: HashMap<String, Candidate> = HashMap::new();
-    for c in cands {
+    for c in candidates {
         m.entry(c.id.clone())
             .and_modify(|e| {
-                e.ann_dist = e.ann_dist.or(c.ann_dist);
+                e.vec_dist = e.vec_dist.or(c.vec_dist);
                 e.fts_score = e.fts_score.or(c.fts_score);
                 if e.text.is_empty() { e.text = c.text.clone(); }
-                if e.abstract_.is_empty() { e.abstract_ = c.abstract_.clone(); }
+                if e.astract.is_empty() { e.astract = c.astract.clone(); }
             })
             .or_insert(c);
     }
@@ -602,7 +602,7 @@ async fn fuse_and_rerank(
 ) -> anyhow::Result<Vec<Candidate>> {
     let k_candidates = k_final * 5;
 
-    let ann_batches: Vec<RecordBatch> = table.query()
+    let vec_batches: Vec<RecordBatch> = table.query()
         .nearest_to(qv)?
         .limit(k_candidates)
         .refine_factor(4)
@@ -618,7 +618,7 @@ async fn fuse_and_rerank(
         .try_collect().await?;
 
     let mut pool = Vec::with_capacity(k_candidates * 2);
-    for b in &ann_batches { push_ann_batch(b, &mut pool); }
+    for b in &vec_batches { push_vec_batch(b, &mut pool); }
     for b in &fts_batches { push_fts_batch(b, &mut pool); }
 
     let pool = dedupe_by_id(pool);
@@ -627,9 +627,8 @@ async fn fuse_and_rerank(
         RerankInitOptions::new(RerankerModel::BGERerankerBase)
     )?;
 
-
     let passages: Vec<String> = pool.iter()
-        .map(|c| if c.abstract_.is_empty() { c.text.clone() } else { format!("{}\n{}", c.abstract_, c.text) })
+        .map(|c| if c.astract.is_empty() { c.text.clone() } else { format!("{}\n{}", c.astract, c.text) })
         .collect();
 
     let passages_ref: Vec<&str> = passages.iter().map(|s| s.as_str()).collect();
@@ -713,11 +712,11 @@ fn stream_chat_oai(
                 .try_collect()
                 .await.expect("err");
             for b in &results_v {
-                let abstract_idx = b.schema().index_of("abstract").expect("err");
+                let astractidx = b.schema().index_of("abstract").expect("err");
                 let text_idx = b.schema().index_of("text").expect("err");
                 let dist_idx = b.schema().index_of("_distance").expect("err");
 
-                let abstracts = b.column(abstract_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
                 let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
@@ -758,11 +757,11 @@ fn stream_chat_oai(
 
             let results_f: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
             for b in &results_f {
-                let abstract_idx = b.schema().index_of("abstract").expect("err");
+                let astractidx = b.schema().index_of("abstract").expect("err");
                 let text_idx = b.schema().index_of("text").expect("err");
                 let dist_idx = b.schema().index_of("_score").expect("err");
 
-                let abstracts = b.column(abstract_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
                 let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
                 let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
@@ -790,29 +789,19 @@ fn stream_chat_oai(
 
             let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
             for b in &results_v {
-                push_ann_batch(b, &mut pool);
+                push_vec_batch(b, &mut pool);
             }
             for b in &results_f {
                 push_fts_batch(b, &mut pool);
             }
             let pool = dedupe_by_id(pool);
 
-            let passages: Vec<String> = pool.iter()
-                .map(|c| {
-                    if c.abstract_.is_empty() {
-                        c.text.clone()
-                    } else {
-                        format!("{}\n{}", c.abstract_, c.text)
-                    }
-                })
-                .collect();
-
             let mut reranker = TextRerank::try_new(
                    RerankInitOptions::new(RerankerModel::BGERerankerBase)
                 ).expect("err");
 
             let passages: Vec<String> = pool.iter()
-                .map(|c| if c.abstract_.is_empty() { c.text.clone() } else { format!("{}\n{}", c.abstract_, c.text) })
+                .map(|c| if c.astract.is_empty() { c.text.clone() } else { format!("{}\n{}", c.astract, c.text) })
                 .collect();
             let ranked = reranker.rerank(user_prompt.clone(), passages.as_slice(), false, None).expect("err");
         
@@ -830,26 +819,6 @@ fn stream_chat_oai(
                 debug!("TOP: {:?}", t);
             }
 
-            /*
-            let k_final = config.max_context as usize;
-
-            // Typically fetch more candidates than you finally show.
-            let k_candidates = k_final * 5;
-
-            let reranker = Arc::new(RRFReranker::new(60.0));
-
-            let results: Vec<RecordBatch> = table
-              .query()
-              .nearest_to(qv.as_slice()).expect("err")
-              .full_text_search(FullTextSearchQuery::new("married".clone().into()))
-              .rerank(reranker)
-              .limit(k_candidates)
-              .refine_factor(4)
-              .execute()
-              .await.expect("err")
-              .try_collect()
-              .await.expect("err");
-              */
         };
 
         let mut messages: Vec<ChatMessage> = {
