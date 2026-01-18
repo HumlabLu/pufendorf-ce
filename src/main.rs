@@ -641,7 +641,7 @@ fn stream_chat_oai(
                 .with_column("abstract".to_string()).expect("err");
             let stream = table.query()
                 .full_text_search(fts)
-                .limit(20)
+                .limit(12)
                 .execute()
                 .await.expect("err");
 
