@@ -33,7 +33,7 @@ mod lance;
 use lance::{create_database, create_empty_table, append_documents, get_row_count, dump_table};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use arrow_array::{
-    RecordBatch
+    RecordBatch, UInt64Array
 };
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::index::scalar::FullTextSearchQuery;use iced::futures::TryStreamExt;
@@ -48,6 +48,8 @@ mod embedder;
 use embedder::parse_embedding_model;
 
 use std::env;
+use std::collections::HashMap;
+use fastembed::{TextRerank, RerankInitOptions, RerankerModel};
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -531,6 +533,115 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
     }
 }
 
+fn push_ann_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
+    let id_idx = b.schema().index_of("id").expect("id col");
+    let a_idx = b.schema().index_of("abstract").expect("abstract");
+    let t_idx = b.schema().index_of("text").expect("text");
+    let d_idx = b.schema().index_of("_distance").expect("_distance");
+
+    let ids = b.column(id_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let abstracts = b.column(a_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let texts = b.column(t_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let dists = b.column(d_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+    for i in 0..b.num_rows() {
+        let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
+        out.push(Candidate{
+            id,
+            abstract_: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
+            text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
+            ann_dist: Some(dists.value(i)),
+            fts_score: None,
+        });
+    }
+}
+
+fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
+    let id_idx = b.schema().index_of("id").expect("id col");
+    let a_idx = b.schema().index_of("abstract").expect("abstract");
+    let t_idx = b.schema().index_of("text").expect("text");
+    let s_idx = b.schema().index_of("_score").expect("_score");
+
+    let ids = b.column(id_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let abstracts = b.column(a_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let texts = b.column(t_idx).as_any().downcast_ref::<StringArray>().unwrap();
+    let scores = b.column(s_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+    for i in 0..b.num_rows() {
+        let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
+        out.push(Candidate{
+            id,
+            abstract_: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
+            text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
+            ann_dist: None,
+            fts_score: Some(scores.value(i)),
+        });
+    }
+}
+
+fn dedupe_by_id(cands: Vec<Candidate>) -> Vec<Candidate> {
+    let mut m: HashMap<String, Candidate> = HashMap::new();
+    for c in cands {
+        m.entry(c.id.clone())
+            .and_modify(|e| {
+                e.ann_dist = e.ann_dist.or(c.ann_dist);
+                e.fts_score = e.fts_score.or(c.fts_score);
+                if e.text.is_empty() { e.text = c.text.clone(); }
+                if e.abstract_.is_empty() { e.abstract_ = c.abstract_.clone(); }
+            })
+            .or_insert(c);
+    }
+    m.into_values().collect()
+}
+
+async fn fuse_and_rerank(
+    table: &lancedb::table::Table,
+    qv: &[f32],
+    user_prompt: &str,
+    k_final: usize,
+) -> anyhow::Result<Vec<Candidate>> {
+    let k_candidates = k_final * 5;
+
+    let ann_batches: Vec<RecordBatch> = table.query()
+        .nearest_to(qv)?
+        .limit(k_candidates)
+        .refine_factor(4)
+        .execute().await?
+        .try_collect().await?;
+
+    let fts = FullTextSearchQuery::new(user_prompt.to_string())
+        .with_column("abstract".to_string())?;
+    let fts_batches: Vec<RecordBatch> = table.query()
+        .full_text_search(fts)
+        .limit(k_candidates)
+        .execute().await?
+        .try_collect().await?;
+
+    let mut pool = Vec::with_capacity(k_candidates * 2);
+    for b in &ann_batches { push_ann_batch(b, &mut pool); }
+    for b in &fts_batches { push_fts_batch(b, &mut pool); }
+
+    let pool = dedupe_by_id(pool);
+
+    let mut reranker = TextRerank::try_new(
+        RerankInitOptions::new(RerankerModel::BGERerankerBase)
+    )?;
+
+
+    let passages: Vec<String> = pool.iter()
+        .map(|c| if c.abstract_.is_empty() { c.text.clone() } else { format!("{}\n{}", c.abstract_, c.text) })
+        .collect();
+
+    let passages_ref: Vec<&str> = passages.iter().map(|s| s.as_str()).collect();
+
+    let ranked = reranker.rerank(user_prompt, passages_ref.as_slice(), false, None)?;
+
+    let mut idx_score: Vec<(usize, f32)> = ranked.into_iter().map(|r| (r.index, r.score)).collect();
+    idx_score.sort_by(|a,b| b.1.total_cmp(&a.1));
+
+    Ok(idx_score.into_iter().take(k_final).map(|(i, _)| pool[i].clone()).collect())
+}
+
 fn stream_chat_oai(
     model: String,
     user_prompt: String,
@@ -592,7 +703,7 @@ fn stream_chat_oai(
         let qv = &q[0];
 
         if let Ok(ref table) = db.open_table(&table_name).execute().await {
-            let results: Vec<RecordBatch> = table
+            let results_v: Vec<RecordBatch> = table
                 .query()
                 .nearest_to(qv.as_slice()).expect("err")
                 .limit(config.max_context as usize)
@@ -601,7 +712,7 @@ fn stream_chat_oai(
                 .await.expect("err")
                 .try_collect()
                 .await.expect("err");
-            for b in &results {
+            for b in &results_v {
                 let abstract_idx = b.schema().index_of("abstract").expect("err");
                 let text_idx = b.schema().index_of("text").expect("err");
                 let dist_idx = b.schema().index_of("_distance").expect("err");
@@ -645,9 +756,8 @@ fn stream_chat_oai(
                 .execute()
                 .await.expect("err");
 
-            let results: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
-            // println!("{:?}", batches);
-            for b in &results {
+            let results_f: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
+            for b in &results_f {
                 let abstract_idx = b.schema().index_of("abstract").expect("err");
                 let text_idx = b.schema().index_of("text").expect("err");
                 let dist_idx = b.schema().index_of("_score").expect("err");
@@ -677,6 +787,48 @@ fn stream_chat_oai(
                     });
                 info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
             } // for
+
+            let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
+            for b in &results_v {
+                push_ann_batch(b, &mut pool);
+            }
+            for b in &results_f {
+                push_fts_batch(b, &mut pool);
+            }
+            let pool = dedupe_by_id(pool);
+
+            let passages: Vec<String> = pool.iter()
+                .map(|c| {
+                    if c.abstract_.is_empty() {
+                        c.text.clone()
+                    } else {
+                        format!("{}\n{}", c.abstract_, c.text)
+                    }
+                })
+                .collect();
+
+            let mut reranker = TextRerank::try_new(
+                   RerankInitOptions::new(RerankerModel::BGERerankerBase)
+                ).expect("err");
+
+            let passages: Vec<String> = pool.iter()
+                .map(|c| if c.abstract_.is_empty() { c.text.clone() } else { format!("{}\n{}", c.abstract_, c.text) })
+                .collect();
+            let ranked = reranker.rerank(user_prompt.clone(), passages.as_slice(), false, None).expect("err");
+        
+            let mut idx_score: Vec<(usize, f32)> =
+                ranked.into_iter().map(|r| (r.index, r.score)).collect();
+
+            idx_score.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+            let top: Vec<&Candidate> = idx_score.iter()
+                .take(k_final)
+                .map(|(i, _)| &pool[*i])
+                .collect();
+
+            for t in top {
+                debug!("TOP: {:?}", t);
+            }
 
             /*
             let k_final = config.max_context as usize;
