@@ -109,3 +109,19 @@ pub struct Candidate {
     pub vec_dist: Option<f32>,
     pub fts_score: Option<f32>,
 }
+
+fn extract_score(vec: Option<f32>, fts: Option<f32>) -> (f32, String) {
+    match (vec, fts) {
+        (Some(v), None) => (v, "vec".to_string()),
+        (None, Some(v)) => (v, "fts".to_string()),
+        (None, None) => panic!("Neither vec nor FTS score present"),
+        (Some(_), Some(_)) => panic!("Both vec and FTS scores present"),
+    }
+}
+
+impl fmt::Display for Candidate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (score, label) = extract_score(self.vec_dist, self.fts_score);
+        write!(f, "({}={}) {}\t{}", label, score, self.astract, self.text)
+    }
+}

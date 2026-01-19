@@ -815,8 +815,9 @@ fn stream_chat_oai(
                 .map(|(i, _)| &pool[*i])
                 .collect();
 
+            info!("Top count {}", top.len());
             for t in top {
-                debug!("TOP: {:?}", t);
+                debug!("TOP: {}", t);
             }
 
         };
