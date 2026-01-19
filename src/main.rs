@@ -485,7 +485,7 @@ impl App {
                 .width(Length::FillPortion(1))
                 .step(12),*/
             text(format!("Max CTX: {}", self.config.max_context)).font(MY_FONT),
-            slider(1u32..=42u32, self.config.max_context, Message::MaxContextChanged)
+            slider(0u32..=42u32, self.config.max_context, Message::MaxContextChanged)
                 .width(Length::FillPortion(1))
                 .step(1u32),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
@@ -695,160 +695,164 @@ fn stream_chat_oai(
             return;
         }
 
-        debug!("Searching for context.");
+        // We should check for CTX==0, and skip this if it is.
+        
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
-        // Insert Db/RAG here?) //
-        let table_name = config.table_name;
-        let db: lancedb::Connection = {
-            let guard = config.db_connexion.lock().unwrap();
-            guard.clone().take().expect("Expected a database connection!")
-        };
+        if config.max_context > 0 {
+            debug!("Searching for context.");
 
-        let q = {
-            let mut e = config.embedder.lock().unwrap();
-            e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
-        };
-        let qv = &q[0];
+            // Insert Db/RAG here?) //
+            let table_name = config.table_name;
+            let db: lancedb::Connection = {
+                let guard = config.db_connexion.lock().unwrap();
+                guard.clone().take().expect("Expected a database connection!")
+            };
 
+            let q = {
+                let mut e = config.embedder.lock().unwrap();
+                e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
+            };
+            let qv = &q[0];
 
-        // We need two variables for retrieval limit and for inclusion limit (after the
-        // reranker. 
-        // Should the first limit be twice the CTX slider, just to get some extra?
-        // or should we always retrieve "many"?
+            // We need two variables for retrieval limit and for inclusion limit (after the
+            // reranker. 
+            // Should the first limit be twice the CTX slider, just to get some extra?
+            // or should we always retrieve "many"?
 
-        if let Ok(ref table) = db.open_table(&table_name).execute().await {
-            let results_v: Vec<RecordBatch> = table
-                .query()
-                .nearest_to(qv.as_slice()).expect("err")
-                .limit(2 * config.max_context as usize)
-                .refine_factor(4) // I pulled this number out of my hat.
-                .execute()
-                .await.expect("err")
-                .try_collect()
-                .await.expect("err");
-            for b in &results_v {
-                let astractidx = b.schema().index_of("abstract").expect("err");
-                let text_idx = b.schema().index_of("text").expect("err");
-                let dist_idx = b.schema().index_of("_distance").expect("err");
+            if let Ok(ref table) = db.open_table(&table_name).execute().await {
+                let results_v: Vec<RecordBatch> = table
+                    .query()
+                    .nearest_to(qv.as_slice()).expect("err")
+                    .limit(2 * config.max_context as usize)
+                    .refine_factor(4) // I pulled this number out of my hat.
+                    .execute()
+                    .await.expect("err")
+                    .try_collect()
+                    .await.expect("err");
+                for b in &results_v {
+                    let astractidx = b.schema().index_of("abstract").expect("err");
+                    let text_idx = b.schema().index_of("text").expect("err");
+                    let dist_idx = b.schema().index_of("_distance").expect("err");
 
-                let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
-                let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
-                let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+                    let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
-                let (retrieved, min_dist, max_dist) =
-                    (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    let (retrieved, min_dist, max_dist) =
+                        (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
                     
-                        let dist = dists.value(i);
-                        let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
-                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+                            let dist = dists.value(i);
+                            let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
+                            let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
 
-                        let min_d = min_d.min(dist);
-                        let max_d = max_d.max(dist);
+                            let min_d = min_d.min(dist);
+                            let max_d = max_d.max(dist);
 
-                        // Cutoff should be done after the reranker, we take all here.
-                        if true || dist < config.cut_off {
-                            debug!("{dist:.3} * {astract}: {text}");
-                            // context += text;
-                            (cnt + 1, min_d, max_d)
-                        } else {
-                            debug!("{dist:.3}   {astract}: {text}");
-                            (cnt, min_d, max_d)
-                        }
-                    });
-                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
-            } // for
+                            // Cutoff should be done after the reranker, we take all here.
+                            if true || dist < config.cut_off {
+                                debug!("{dist:.3} * {astract}: {text}");
+                                // context += text;
+                                (cnt + 1, min_d, max_d)
+                            } else {
+                                debug!("{dist:.3}   {astract}: {text}");
+                                (cnt, min_d, max_d)
+                            }
+                        });
+                    info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
+                } // for
 
-            // Full-text query. (Also for text field?)
-            let fts = FullTextSearchQuery::new(user_prompt.to_string())
-                .with_column("abstract".to_string()).expect("err");
-            let stream = table.query()
-                .full_text_search(fts)
-                .limit(2 * config.max_context as usize)
-                .execute()
-                .await.expect("err");
+                // Full-text query. (Also for text field?)
+                let fts = FullTextSearchQuery::new(user_prompt.to_string())
+                    .with_column("abstract".to_string()).expect("err");
+                let stream = table.query()
+                    .full_text_search(fts)
+                    .limit(2 * config.max_context as usize)
+                    .execute()
+                    .await.expect("err");
 
-            let results_f: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
-            for b in &results_f {
-                let astractidx = b.schema().index_of("abstract").expect("err");
-                let text_idx = b.schema().index_of("text").expect("err");
-                let dist_idx = b.schema().index_of("_score").expect("err");
+                let results_f: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
+                for b in &results_f {
+                    let astractidx = b.schema().index_of("abstract").expect("err");
+                    let text_idx = b.schema().index_of("text").expect("err");
+                    let dist_idx = b.schema().index_of("_score").expect("err");
 
-                let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
-                let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
-                let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+                    let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
-                let (retrieved, min_dist, max_dist) =
-                    (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    let (retrieved, min_dist, max_dist) =
+                        (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
                     
-                        let dist = dists.value(i);
-                        let astract = abstracts.value(i);
-                        let text = texts.value(i);
+                            let dist = dists.value(i);
+                            let astract = abstracts.value(i);
+                            let text = texts.value(i);
 
-                        let min_d = min_d.min(dist);
-                        let max_d = max_d.max(dist);
+                            let min_d = min_d.min(dist);
+                            let max_d = max_d.max(dist);
 
-                        // Cutoff should be done after the reranker, we take all here.
-                        if true || dist < config.cut_off {
-                            debug!("{dist:.3} * {astract}: {text}");
-                            // context += text;
-                            (cnt + 1, min_d, max_d)
-                        } else {
-                            debug!("{dist:.3}   {astract}: {text}");
-                            (cnt, min_d, max_d)
-                        }
-                    });
-                info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
-            } // for
+                            // Cutoff should be done after the reranker, we take all here.
+                            if true || dist < config.cut_off {
+                                debug!("{dist:.3} * {astract}: {text}");
+                                // context += text;
+                                (cnt + 1, min_d, max_d)
+                            } else {
+                                debug!("{dist:.3}   {astract}: {text}");
+                                (cnt, min_d, max_d)
+                            }
+                        });
+                    info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
+                } // for
 
-            let k_final = config.max_context as usize;
-            let k_candidates = k_final * 2;
-            let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
+                let k_final = config.max_context as usize;
+                let k_candidates = k_final * 2;
+                let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
 
-            for b in &results_v {
-                push_vec_batch(b, &mut pool);
-            }
-            for b in &results_f {
-                push_fts_batch(b, &mut pool);
-            }
-            let pool = dedupe_by_id(pool);
+                for b in &results_v {
+                    push_vec_batch(b, &mut pool);
+                }
+                for b in &results_f {
+                    push_fts_batch(b, &mut pool);
+                }
+                let pool = dedupe_by_id(pool);
 
-            let mut reranker = TextRerank::try_new(
-                   RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn)
-                   //BGERerankerV2M3) //BGERerankerBase)
-                ).expect("err");
+                let mut reranker = TextRerank::try_new(
+                       RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn)
+                       //BGERerankerV2M3) //BGERerankerBase)
+                    ).expect("err");
 
-            // Combine the abstract and text for reranking.
-            let combined: Vec<String> = pool.iter()
-                .map(|c| format!("{}\n{}", c.astract, c.text))
-                .collect();
-            let ranked = reranker.rerank(user_prompt.clone(), combined.as_slice(), false, None).expect("err");
+                // Combine the abstract and text for reranking.
+                let combined: Vec<String> = pool.iter()
+                    .map(|c| format!("{}\n{}", c.astract, c.text))
+                    .collect();
+                let ranked = reranker.rerank(user_prompt.clone(), combined.as_slice(), false, None).expect("err");
         
-            let mut rer_score: Vec<(usize, f32)> =
-                ranked.into_iter().map(|r| (r.index, r.score)).collect();
+                let mut rer_score: Vec<(usize, f32)> =
+                    ranked.into_iter().map(|r| (r.index, r.score)).collect();
 
-            rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
+                rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            // rer_scores are (usize, f32) where usize is an index into the pool,
-            // and the score is, uhm, the score.
-            let best = rer_score[0].1;
-            let delta = 1.5; // Fantasy number... maybe use the cutoff variable?
-            debug!("best/delta {}/{}", best, delta);
-            let top: Vec<(&Candidate, f32)> = rer_score.iter()
-                // .take(k_final) // we don't know if we want all of them...
-                .take_while(|(_, s)| best - *s <= delta)
-                .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
-                .collect();
+                // rer_scores are (usize, f32) where usize is an index into the pool,
+                // and the score is, uhm, the score.
+                let best = rer_score[0].1;
+                let delta = config.cut_off; // 1.5; // Fantasy number... larger is more context.
+                debug!("best/delta {}/{}", best, delta);
+                let top: Vec<(&Candidate, f32)> = rer_score.iter()
+                    // .take(k_final) // we don't know if we want all of them...
+                    .take_while(|(_, s)| best - *s <= delta)
+                    .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
+                    .collect();
 
-            info!("Top count {}", top.len());
-            for (candidate, s) in top {
-                context += &candidate.text;
-                // println!("\n\n{}", &candidate.text);
-                debug!("TOP: ({}) {}", s, candidate);
-            }
-            // println!("{}", &context);
+                info!("Top count {}", top.len());
+                for (candidate, s) in top {
+                    context += &candidate.text;
+                    // println!("\n\n{}", &candidate.text);
+                    debug!("TOP: ({}) {}", s, candidate);
+                }
+                // println!("{}", &context);
 
-        };
+            };
+        } // max_context > 0
 
         let mut messages: Vec<ChatMessage> = {
             let h = history.lock().unwrap();
