@@ -818,10 +818,11 @@ fn stream_chat_oai(
                    //BGERerankerV2M3) //BGERerankerBase)
                 ).expect("err");
 
-            let passages: Vec<String> = pool.iter()
-                .map(|c| if c.astract.is_empty() { c.text.clone() } else { format!("{}\n{}", c.astract, c.text) })
+            // Combine the abstract and text for reranking.
+            let combined: Vec<String> = pool.iter()
+                .map(|c| format!("{}\n{}", c.astract, c.text))
                 .collect();
-            let ranked = reranker.rerank(user_prompt.clone(), passages.as_slice(), false, None).expect("err");
+            let ranked = reranker.rerank(user_prompt.clone(), combined.as_slice(), false, None).expect("err");
         
             let mut rer_score: Vec<(usize, f32)> =
                 ranked.into_iter().map(|r| (r.index, r.score)).collect();
@@ -836,8 +837,10 @@ fn stream_chat_oai(
             info!("Top count {}", top.len());
             for (t, s) in top {
                 context += &t.text;
+                // println!("\n\n{}", &t.text);
                 debug!("TOP: ({}) {}", s, t);
             }
+            println!("{}", &context);
 
         };
 
