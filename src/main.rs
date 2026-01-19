@@ -554,6 +554,7 @@ fn push_vec_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
             fts_score: None,
         });
     }
+    debug!("Pushed {} vector search results to candidates.", b.num_rows());
 }
 
 fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
@@ -577,6 +578,7 @@ fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
             fts_score: Some(scores.value(i)),
         });
     }
+    debug!("Pushed {} full-text search results to candidates.", b.num_rows());
 }
 
 fn dedupe_by_id(candidates: Vec<Candidate>) -> Vec<Candidate> {
@@ -591,8 +593,10 @@ fn dedupe_by_id(candidates: Vec<Candidate>) -> Vec<Candidate> {
             })
             .or_insert(c);
     }
+    debug!("After dedup {}", m.len());
     m.into_values().collect()
 }
+
 
 async fn fuse_and_rerank(
     table: &lancedb::table::Table,
