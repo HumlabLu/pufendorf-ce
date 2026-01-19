@@ -654,7 +654,7 @@ fn stream_chat_oai(
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
-        debug!("Processing query: {user_prompt}");
+        info!("Q: {}", user_prompt);
 
         // Moderation ----
         let parameters = ModerationParametersBuilder::default()
@@ -689,7 +689,7 @@ fn stream_chat_oai(
             return;
         }
 
-        debug!("Searching context.");
+        debug!("Searching for context.");
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         // Insert Db/RAG here?) //
@@ -708,8 +708,8 @@ fn stream_chat_oai(
 
         // We need two variables for retrieval limit and for inclusion limit (after the
         // reranker. 
-        // We hard code the first one to twelve now. The max of the CTX slider is 42.
-        // should the first limit be twice the CTX slider?
+        // Should the first limit be twice the CTX slider, just to get some extra?
+        // or should we always retrieve "many"?
 
         if let Ok(ref table) = db.open_table(&table_name).execute().await {
             let results_v: Vec<RecordBatch> = table
@@ -743,7 +743,7 @@ fn stream_chat_oai(
                         // Cutoff should be done after the reranker, we take all here.
                         if true || dist < config.cut_off {
                             debug!("{dist:.3} * {astract}: {text}");
-                            context += text;
+                            // context += text;
                             (cnt + 1, min_d, max_d)
                         } else {
                             debug!("{dist:.3}   {astract}: {text}");
@@ -776,8 +776,10 @@ fn stream_chat_oai(
                     (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
                     
                         let dist = dists.value(i);
-                        let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
-                        let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+                        // let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
+                        let astract = abstracts.value(i);
+                        // let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
+                        let text = texts.value(i);
 
                         let min_d = min_d.min(dist);
                         let max_d = max_d.max(dist);
@@ -785,7 +787,7 @@ fn stream_chat_oai(
                         // Cutoff should be done after the reranker, we take all here.
                         if true || dist < config.cut_off {
                             debug!("{dist:.3} * {astract}: {text}");
-                            context += text;
+                            // context += text;
                             (cnt + 1, min_d, max_d)
                         } else {
                             debug!("{dist:.3}   {astract}: {text}");
@@ -828,6 +830,7 @@ fn stream_chat_oai(
 
             info!("Top count {}", top.len());
             for (t, s) in top {
+                context += &t.text;
                 debug!("TOP: ({}) {}", s, t);
             }
 
@@ -895,7 +898,7 @@ fn stream_chat_oai(
 
         { // Inside a block because we cannot hold the guard.
             let mut h = history.lock().unwrap();
-            info!("Q: {}", user_prompt);
+            // info!("Q: {}", user_prompt);
             h.push(Line { role: Role::User, content: user_prompt });
             info!("A: {}", assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
