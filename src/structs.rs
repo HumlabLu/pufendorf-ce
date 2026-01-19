@@ -116,7 +116,7 @@ fn extract_score(vec: Option<f32>, fts: Option<f32>) -> (f32, String) {
         (Some(v), None) => (v, "vec".to_string()),
         (None, Some(v)) => (v, "fts".to_string()),
         (None, None) => panic!("Neither vec nor FTS score present"),
-        (Some(v), Some(_)) => (v, "both".to_string()), //panic!("Both vec and FTS scores present"),
+        (Some(v), Some(f)) => (v, format!("both {}/{}", v, f)), //panic!("Both vec and FTS scores present"),
     }
 }
 
