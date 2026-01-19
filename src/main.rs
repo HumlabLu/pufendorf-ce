@@ -549,14 +549,16 @@ fn push_vec_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
     let dists = b.column(d_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
     for i in 0..b.num_rows() {
-        let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
-        out.push(Candidate{
+        let id = ids.value(i).to_string();
+        let candidate = Candidate{
             id,
-            astract: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
-            text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
+            astract: abstracts.value(i).to_string(),
+            text: texts.value(i).to_string(),
             vec_dist: Some(dists.value(i)),
             fts_score: None,
-        });
+        };
+        trace!("{}", &candidate);
+        out.push(candidate);
     }
     debug!("Pushed {} vector search results to candidates.", b.num_rows());
 }
@@ -573,14 +575,16 @@ fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
     let scores = b.column(s_idx).as_any().downcast_ref::<Float32Array>().unwrap();
 
     for i in 0..b.num_rows() {
-        let id = if ids.is_null(i) { "NOID" } else { ids.value(i) }.to_string();
-        out.push(Candidate{
+        let id = ids.value(i).to_string();
+        let candidate = Candidate{
             id,
-            astract: if abstracts.is_null(i) { "" } else { abstracts.value(i) }.to_string(),
-            text: if texts.is_null(i) { "" } else { texts.value(i) }.to_string(),
+            astract: abstracts.value(i).to_string(),
+            text: texts.value(i).to_string(),
             vec_dist: None,
             fts_score: Some(scores.value(i)),
-        });
+        };
+        trace!("{}", &candidate);
+        out.push(candidate);
     }
     debug!("Pushed {} full-text search results to candidates.", b.num_rows());
 }
@@ -824,11 +828,14 @@ fn stream_chat_oai(
                 // Combine the abstract and text for reranking.
                 let combined: Vec<String> = pool.iter()
                     .map(|c| format!("{}\n{}", c.astract, c.text))
+                    .inspect(|c| trace!("{}", c))
                     .collect();
                 let ranked = reranker.rerank(user_prompt.clone(), combined.as_slice(), false, None).expect("err");
         
                 let mut rer_score: Vec<(usize, f32)> =
-                    ranked.into_iter().map(|r| (r.index, r.score)).collect();
+                    ranked.into_iter()
+                        .map(|r| (r.index, r.score))
+                        .collect();
 
                 rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
@@ -841,15 +848,14 @@ fn stream_chat_oai(
                     // .take(k_final) // we don't know if we want all of them...
                     .take_while(|(_, s)| best - *s <= delta)
                     .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
+                    .inspect(|r| trace!("{}", r.0)) // r is (&Candidate, f32)
                     .collect();
 
                 info!("Top count {}", top.len());
                 for (candidate, s) in top {
                     context += &candidate.text;
-                    // println!("\n\n{}", &candidate.text);
                     debug!("TOP: ({}) {}", s, candidate);
                 }
-                // println!("{}", &context);
 
             };
         } // max_context > 0
