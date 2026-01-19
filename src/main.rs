@@ -829,18 +829,24 @@ fn stream_chat_oai(
 
             rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
+            // rer_scores are (usize, f32) where usize is an index into the pool,
+            // and the score is, uhm, the score.
+            let best = rer_score[0].1;
+            let delta = 1.5; // Fantasy number... maybe use the cutoff variable?
+            debug!("best/delta {}/{}", best, delta);
             let top: Vec<(&Candidate, f32)> = rer_score.iter()
-                .take(k_final)
-                .map(|(i, s)| (&pool[*i], *s))
+                // .take(k_final) // we don't know if we want all of them...
+                .take_while(|(_, s)| best - *s <= delta)
+                .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
                 .collect();
 
             info!("Top count {}", top.len());
-            for (t, s) in top {
-                context += &t.text;
-                // println!("\n\n{}", &t.text);
-                debug!("TOP: ({}) {}", s, t);
+            for (candidate, s) in top {
+                context += &candidate.text;
+                // println!("\n\n{}", &candidate.text);
+                debug!("TOP: ({}) {}", s, candidate);
             }
-            println!("{}", &context);
+            // println!("{}", &context);
 
         };
 
