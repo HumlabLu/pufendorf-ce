@@ -643,10 +643,10 @@ async fn fuse_and_rerank(
 
     let ranked = reranker.rerank(user_prompt, passages_ref.as_slice(), false, None)?;
 
-    let mut idx_score: Vec<(usize, f32)> = ranked.into_iter().map(|r| (r.index, r.score)).collect();
-    idx_score.sort_by(|a,b| b.1.total_cmp(&a.1));
+    let mut rer_score: Vec<(usize, f32)> = ranked.into_iter().map(|r| (r.index, r.score)).collect();
+    rer_score.sort_by(|a,b| b.1.total_cmp(&a.1));
 
-    Ok(idx_score.into_iter().take(k_final).map(|(i, _)| pool[i].clone()).collect())
+    Ok(rer_score.into_iter().take(k_final).map(|(i, _)| pool[i].clone()).collect())
 }
 
 fn stream_chat_oai(
@@ -823,12 +823,12 @@ fn stream_chat_oai(
                 .collect();
             let ranked = reranker.rerank(user_prompt.clone(), passages.as_slice(), false, None).expect("err");
         
-            let mut idx_score: Vec<(usize, f32)> =
+            let mut rer_score: Vec<(usize, f32)> =
                 ranked.into_iter().map(|r| (r.index, r.score)).collect();
 
-            idx_score.sort_by(|a, b| b.1.total_cmp(&a.1));
+            rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            let top: Vec<(&Candidate, f32)> = idx_score.iter()
+            let top: Vec<(&Candidate, f32)> = rer_score.iter()
                 .take(k_final)
                 .map(|(i, s)| (&pool[*i], *s))
                 .collect();
