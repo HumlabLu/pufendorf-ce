@@ -705,11 +705,17 @@ fn stream_chat_oai(
         };
         let qv = &q[0];
 
+
+        // We need two variables for retrieval limit and for inclusion limit (after the
+        // reranker. 
+        // We hard code the first one to twelve now. The max of the CTX slider is 42.
+        // should the first limit be twice the CTX slider?
+
         if let Ok(ref table) = db.open_table(&table_name).execute().await {
             let results_v: Vec<RecordBatch> = table
                 .query()
                 .nearest_to(qv.as_slice()).expect("err")
-                .limit(config.max_context as usize)
+                .limit(2 * config.max_context as usize)
                 .refine_factor(4) // I pulled this number out of my hat.
                 .execute()
                 .await.expect("err")
@@ -734,7 +740,8 @@ fn stream_chat_oai(
                         let min_d = min_d.min(dist);
                         let max_d = max_d.max(dist);
 
-                        if dist < config.cut_off {
+                        // Cutoff should be done after the reranker, we take all here.
+                        if true || dist < config.cut_off {
                             debug!("{dist:.3} * {astract}: {text}");
                             context += text;
                             (cnt + 1, min_d, max_d)
@@ -746,16 +753,12 @@ fn stream_chat_oai(
                 info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
             } // for
 
-
-            let k_final = config.max_context as usize;
-            let k_candidates = k_final * 5;
-
-
+            // Full-text query.
             let fts = FullTextSearchQuery::new(user_prompt.to_string())
                 .with_column("abstract".to_string()).expect("err");
             let stream = table.query()
                 .full_text_search(fts)
-                .limit(12)
+                .limit(2 * config.max_context as usize)
                 .execute()
                 .await.expect("err");
 
@@ -779,7 +782,8 @@ fn stream_chat_oai(
                         let min_d = min_d.min(dist);
                         let max_d = max_d.max(dist);
 
-                        if dist < config.cut_off {
+                        // Cutoff should be done after the reranker, we take all here.
+                        if true || dist < config.cut_off {
                             debug!("{dist:.3} * {astract}: {text}");
                             context += text;
                             (cnt + 1, min_d, max_d)
@@ -791,7 +795,10 @@ fn stream_chat_oai(
                 info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
             } // for
 
+            let k_final = config.max_context as usize;
+            let k_candidates = k_final * 2;
             let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
+
             for b in &results_v {
                 push_vec_batch(b, &mut pool);
             }
@@ -814,14 +821,14 @@ fn stream_chat_oai(
 
             idx_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            let top: Vec<&Candidate> = idx_score.iter()
+            let top: Vec<(&Candidate, f32)> = idx_score.iter()
                 .take(k_final)
-                .map(|(i, _)| &pool[*i])
+                .map(|(i, s)| (&pool[*i], *s))
                 .collect();
 
             info!("Top count {}", top.len());
-            for t in top {
-                debug!("TOP: {}", t);
+            for (t, s) in top {
+                debug!("TOP: ({}) {}", s, t);
             }
 
         };
