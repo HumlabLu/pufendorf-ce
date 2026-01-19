@@ -268,10 +268,13 @@ impl App {
         let file_path = Path::new(&config.promptfile);
         let content = fs::read_to_string(file_path).expect("no file");
         let data: Value = serde_json::from_str(&content).expect("data");
-        let sysprompt = &data["system_prompt"]
+        let sysprompt = data["system_prompt"]
             .as_str()
             .unwrap_or("Answer the questions.");
         let mut sysprompt = sysprompt.to_string();
+        let label = data["label"]
+            .as_str()
+            .unwrap_or("Answer: ");
         if let Some(extras) = data["extra_info"].as_array() {
             sysprompt += "\n";
             for extra in extras {
@@ -309,6 +312,7 @@ impl App {
 
             system_prompt: sysprompt,
             extra_info: "The year is 1667".into(), // Not used.
+            label: label.to_string(),
         }, Task::none())
     }
 
@@ -451,7 +455,7 @@ impl App {
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
-                Role::Assistant => "Samuel: ",
+                Role::Assistant => &self.label,
                 Role::System => "",
             };
             col.push(text(format!("{prefix}{}", line.content)).size(self.config.fontsize).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
@@ -628,7 +632,7 @@ async fn fuse_and_rerank(
     let pool = dedupe_by_id(pool);
 
     let mut reranker = TextRerank::try_new(
-        RerankInitOptions::new(RerankerModel::BGERerankerBase)
+        RerankInitOptions::new(RerankerModel::BGERerankerV2M3) //BGERerankerBase)
     )?;
 
     let passages: Vec<String> = pool.iter()
@@ -810,7 +814,8 @@ fn stream_chat_oai(
             let pool = dedupe_by_id(pool);
 
             let mut reranker = TextRerank::try_new(
-                   RerankInitOptions::new(RerankerModel::BGERerankerBase)
+                   RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn)
+                   //BGERerankerV2M3) //BGERerankerBase)
                 ).expect("err");
 
             let passages: Vec<String> = pool.iter()

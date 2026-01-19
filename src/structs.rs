@@ -85,6 +85,7 @@ pub struct App {
 
     pub system_prompt: String,
     pub extra_info: String,
+    pub label: String,
 }
 
 #[derive(Clone)]
