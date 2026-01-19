@@ -585,6 +585,8 @@ fn push_fts_batch(b: &RecordBatch, out: &mut Vec<Candidate>) {
     debug!("Pushed {} full-text search results to candidates.", b.num_rows());
 }
 
+// Merge in a HashMap, merge scores and data. If an item exists in both
+// fts and vec batches, it will have both scores.
 fn dedupe_by_id(candidates: Vec<Candidate>) -> Vec<Candidate> {
     let mut m: HashMap<String, Candidate> = HashMap::new();
     for c in candidates {
@@ -757,7 +759,7 @@ fn stream_chat_oai(
                 info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
             } // for
 
-            // Full-text query.
+            // Full-text query. (Also for text field?)
             let fts = FullTextSearchQuery::new(user_prompt.to_string())
                 .with_column("abstract".to_string()).expect("err");
             let stream = table.query()
@@ -780,9 +782,7 @@ fn stream_chat_oai(
                     (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
                     
                         let dist = dists.value(i);
-                        // let astract = if abstracts.is_null(i) { "<NULL>" } else { abstracts.value(i) };
                         let astract = abstracts.value(i);
-                        // let text = if texts.is_null(i) { "<NULL>" } else { texts.value(i) };
                         let text = texts.value(i);
 
                         let min_d = min_d.min(dist);

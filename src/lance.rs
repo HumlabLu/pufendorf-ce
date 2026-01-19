@@ -329,6 +329,10 @@ where
         .execute()
         .await?;
 
+    t.create_index(&["text"], Index::FTS(Default::default()))
+        .execute()
+        .await?;
+
     Ok(())
 }
 
