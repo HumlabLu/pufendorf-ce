@@ -51,5 +51,5 @@ def lucris():
                     text = ""
 
 if __name__ == "__main__":
-    # main()
-    lucris()
+    main()
+    # lucris()
