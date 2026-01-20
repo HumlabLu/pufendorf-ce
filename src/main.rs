@@ -841,20 +841,37 @@ fn stream_chat_oai(
 
                 // rer_scores are (usize, f32) where usize is an index into the pool,
                 // and the score is, uhm, the score.
-                let best = rer_score[0].1;
-                let delta = config.cut_off; // 1.5; // Fantasy number... larger is more context.
-                debug!("best/delta {}/{}", best, delta);
-                let top: Vec<(&Candidate, f32)> = rer_score.iter()
-                    // .take(k_final) // we don't know if we want all of them...
-                    .take_while(|(_, s)| best - *s <= delta)
-                    .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
-                    .inspect(|r| trace!("{}", r.0)) // r is (&Candidate, f32)
-                    .collect();
+                let highest= rer_score[0].1;
+                let last = rer_score[rer_score.len() - 1]; // Should check boundaries.
+                let lowest = last.1;
+                info!("Top {} - {}", highest, lowest);
+                if highest < -2.0 { // FIXME very arbitrary... works for Pufendorf.
+                    info!("Top count 0");
+                    debug!("Probably useless retrieval.");
+                } else {
+                    let delta = config.cut_off; // 1.5; // Fantasy number... larger is more context.
+                    debug!("best/delta {}/{}", highest, delta);
+                    let top: Vec<(&Candidate, f32)> = rer_score.iter()
+                        // .take(k_final) // we don't know if we want all of them...
+                        .take_while(|(_, s)| highest - *s <= delta)
+                        .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
+                        .inspect(|r| trace!("{}", r.0)) // r is (&Candidate, f32)
+                        .collect();
 
-                info!("Top count {}", top.len());
-                for (candidate, s) in top {
-                    context += &candidate.text;
-                    debug!("TOP: ({}) {}", s, candidate);
+                    let (highest, lowest) = if !top.is_empty() {
+                        let highest = top.iter().map(|(_, score)| score).fold(f32::MIN, |a, &b| a.max(b));
+                        let lowest = top.iter().map(|(_, score)| score).fold(f32::MAX, |a, &b| a.min(b));
+                        (highest, lowest)
+                    } else {
+                        debug!("No elements in top!");
+                        (0.0, 0.0)
+                    };
+
+                    info!("Top count {} ({} - {})", top.len(), highest, lowest);
+                    for (candidate, s) in top {
+                        context += &candidate.text;
+                        debug!("TOP: ({}) {}", s, candidate);
+                    }
                 }
 
             };
