@@ -49,10 +49,10 @@ jobs:
           # Make Rust compile to our target (defined in the matrix)
           targets: ${{ matrix.target }}
 
-      - name: install protoc
+      - name: Install protoc
         uses: taiki-e/install-action@v2
         with:
-          tool: protoc@${{ env.PROTOC_VERSION }}
+          tool: protoc
 
       - name: Build
         uses: actions-rs/cargo@v1
