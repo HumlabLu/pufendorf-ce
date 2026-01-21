@@ -608,7 +608,7 @@ fn dedupe_by_id(candidates: Vec<Candidate>) -> Vec<Candidate> {
 }
 
 
-async fn fuse_and_rerank(
+async fn _fuse_and_rerank(
     table: &lancedb::table::Table,
     qv: &[f32],
     user_prompt: &str,
@@ -699,8 +699,6 @@ fn stream_chat_oai(
             return;
         }
 
-        // We should check for CTX==0, and skip this if it is.
-        
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
         if config.max_context > 0 {
