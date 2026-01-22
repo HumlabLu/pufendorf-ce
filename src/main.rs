@@ -301,7 +301,7 @@ impl App {
             config, 
 
             model: "gpt-4.1-nano".into(),
-            mode: Mode::Chat,
+            mode: Mode::OpenAI,
 
             temperature: 0.1,
             num_predict: 2024,
@@ -402,10 +402,15 @@ impl App {
                     .num_predict(self.num_predict);
 
                 let task = match self.mode {
-                    Mode::Chat => {
+                    Mode::OpenAI => {
                         Task::stream(
                             stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
                             // ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
+                        )
+                    }
+                    Mode::Ollama => {
+                        Task::stream(
+                            ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                 };
@@ -429,7 +434,7 @@ impl App {
 
             Message::LlmDone => {
                 self.waiting = false;
-                if self.mode == Mode::Chat {
+                if self.mode == Mode::OpenAI || self.mode == Mode::Ollama { // So... always...
                     // Here we used to trim.
                     if let Some(last) = self.lines.last_mut() {
                         last.content.push_str("\n");

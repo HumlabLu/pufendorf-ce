@@ -22,15 +22,17 @@ impl ModelOptions {
     }
 }
 
-// Not used anymore... make this OpenAI/Ollama?
+// Not used yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    Chat,
+    OpenAI,
+    Ollama,
 }
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Mode::Chat => write!(f, "Chat (history)"),
+            Mode::OpenAI => write!(f, "OpenAI"),
+            Mode::Ollama => write!(f, "Ollama"),
         }
     }
 }
