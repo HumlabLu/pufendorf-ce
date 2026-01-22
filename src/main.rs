@@ -871,12 +871,15 @@ fn ollama_stream_chat(
         // By default, it will connect to localhost:11434
         let ollama = Ollama::default();
         let options = OllamaModelOptions::default()
-            .temperature(0.2)
-            .repeat_penalty(1.5)
-            .top_k(25)
-            .top_p(0.25);
+            .temperature(opts.temperature)
+            .repeat_penalty(1.5) // from default 1.1
+            .top_k(25) // from default 40
+            .top_p(0.25) // from default 0.9
+            .num_ctx(16_384)
+            .num_predict(opts.num_predict as i32);
 
-        let mut stream = ollama.generate_stream(GenerationRequest::new(model, user_prompt).options(options)).await.unwrap();
+        let mut stream = ollama.generate_stream(GenerationRequest::new(model, user_prompt)
+            .options(options)).await.unwrap();
 
         while let Some(res) = stream.next().await {
             let responses = res.unwrap();
