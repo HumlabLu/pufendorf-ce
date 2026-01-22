@@ -810,14 +810,20 @@ fn stream_chat_oai(
         {
             Ok(p) => p,
             Err(e) => {
+                // Yield errors to the stream/chat.
                 yield Message::LlmErr(e.to_string());
-                yield Message::LlmDone; return;
+                yield Message::LlmDone;
+                return;
             }
         };
 
         let stream0 = match client.chat().create_stream(params).await {
             Ok(s) => s,
-            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            Err(e) => {
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone;
+                return;
+            }
         };
 
         let mut tracked = RoleTrackingStream::new(stream0);
