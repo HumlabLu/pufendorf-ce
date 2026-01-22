@@ -404,8 +404,8 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            // stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
-                            ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
+                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
+                            // ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                 };
