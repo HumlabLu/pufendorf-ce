@@ -51,6 +51,12 @@ use std::env;
 use std::collections::HashMap;
 use fastembed::{TextRerank, RerankInitOptions, RerankerModel};
 
+use ollama_rs::Ollama;
+use ollama_rs::generation::chat::{request::ChatMessageRequest, ChatMessage as OllamaChatMessage};
+use ollama_rs::history::ChatHistory;
+use ollama_rs::generation::completion::request::GenerationRequest;
+use ollama_rs::models::ModelOptions as OllamaModelOptions;
+
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
 
@@ -399,6 +405,7 @@ impl App {
                     Mode::Chat => {
                         Task::stream(
                             stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
+                            // ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                 };
@@ -836,3 +843,76 @@ fn stream_chat_oai(
         yield Message::LlmDone;
     }
 }
+
+fn ollama_stream_chat(
+    model: String,
+    user_prompt: String,
+    opts: ModelOptions,
+    history: Arc<Mutex<Vec<Line>>>,
+    config: AppConfig,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+
+        /*
+        let txt = vec!["Some", "words"];
+        for t in txt {
+            let chunk = t;
+            if !chunk.is_empty() {
+                yield Message::LlmChunk(chunk.to_string());
+                yield Message::LlmChunk(" ".to_string());
+            }
+        }
+        yield Message::LlmDone;
+        */
+        
+        // llama3.2:latest
+        // 
+        let model = "llama3.2:latest".to_string();
+        // By default, it will connect to localhost:11434
+        let ollama = Ollama::default();
+        let options = OllamaModelOptions::default()
+            .temperature(0.2)
+            .repeat_penalty(1.5)
+            .top_k(25)
+            .top_p(0.25);
+
+        let mut stream = ollama.generate_stream(GenerationRequest::new(model, user_prompt).options(options)).await.unwrap();
+
+        while let Some(res) = stream.next().await {
+            let responses = res.unwrap();
+            for resp in responses {
+                let chunk = resp.response; //.response.as_bytes().to_string();
+                yield Message::LlmChunk(chunk);
+            }
+        }
+        yield Message::LlmDone; return;
+
+        /*
+        let mut s = match ollama.send_chat_messages_with_history_stream(history, req).await {
+            Ok(s) => s,
+            Err(e) => {
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone; return;
+            }
+        };
+
+        while let Some(item) = s.next().await {
+            match item {
+                Ok(res) => {
+                    let chunk = res.message.content;
+                    if !chunk.is_empty() {
+                        yield Message::LlmChunk(chunk);
+                    }
+                }
+                Err(_) => {
+                    yield Message::LlmErr("Ollama stream error".into());
+                    yield Message::LlmDone; return;
+                }
+            }
+        }
+
+        yield Message::LlmDone;
+        */
+    }
+}
+

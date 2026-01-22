@@ -25,7 +25,4 @@ tokio-stream = "0.1.17"
 text-splitter = "0.29.3"
 pdf-extract = "0.10.0"
 uuid = { version = "1.19.0", features = ["serde", "v4", "v7"] }
-
-[target.x86_64-pc-windows-gnu]
-linker = "x86_64-w64-mingw32-gcc"
-ar = "/opt/homebrew/Cellar/mingw-w64/13.0.0_2/toolchain-x86_64/x86_64-w64-mingw32/bin/ar"
+ollama-rs = { version = "0.3.3", features = ["stream"] }
