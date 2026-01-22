@@ -92,6 +92,9 @@ struct Cli {
     #[arg(long, help = "Font size.", default_value_t = 18)]
     fontsize: u32,
 
+    #[arg(short, long, help = "Mode, openai or ollama.", default_value = "openai")]
+    mode: String,
+
     #[arg(short, long, help = "System prompt/info json file.")]
     promptfile: Option<String>,
 
@@ -246,6 +249,7 @@ fn main() -> iced::Result {
         table_name: table_name.clone(),
         promptfile: promptfile,
         model: "gpt-4o-mini".into(),
+        mode: cli.mode,
         fontsize: cli.fontsize,
         cut_off: cli.cutoff,
         max_context: 12,
@@ -297,11 +301,13 @@ impl App {
             }]
         ));
 
+        let mode = Mode::from_str(&config.mode).expect("Unknow mode");
+
         (Self {
             config, 
 
             model: "gpt-4.1-nano".into(),
-            mode: Mode::OpenAI,
+            mode: mode,
 
             temperature: 0.1,
             num_predict: 2024,
@@ -953,7 +959,6 @@ fn ollama_stream_chat(
         // Debugging.
         {
             let h = ollama_history.lock().unwrap();
-            println!("--- Ollama history ---");
             for (i, msg) in h.iter().enumerate() {
                 debug!("[{i}] {:?}: {}", msg.role, msg.content);
             }

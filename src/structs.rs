@@ -1,4 +1,5 @@
 use fastembed::TextEmbedding;
+use std::str::FromStr;
 use std::{
     fmt,
     sync::{Arc, Mutex},
@@ -33,6 +34,17 @@ impl fmt::Display for Mode {
         match self {
             Mode::OpenAI => write!(f, "OpenAI"),
             Mode::Ollama => write!(f, "Ollama"),
+        }
+    }
+}
+impl FromStr for Mode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Mode, Self::Err> {
+        match input {
+            "openai" => Ok(Mode::OpenAI),
+            "ollama" => Ok(Mode::Ollama),
+            _ => Err(input.to_string()),
         }
     }
 }
@@ -96,6 +108,7 @@ pub struct AppConfig {
     pub table_name: String,
     pub promptfile: String,
     pub model: String,
+    pub mode: String,
     pub fontsize: u32,
     pub cut_off: f32,
     pub max_context: u32,
