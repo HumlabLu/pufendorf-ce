@@ -52,7 +52,7 @@ use std::collections::HashMap;
 use fastembed::{TextRerank, RerankInitOptions, RerankerModel};
 
 use ollama_rs::Ollama;
-use ollama_rs::generation::chat::{request::ChatMessageRequest, ChatMessage as OllamaChatMessage};
+use ollama_rs::generation::chat::{request::ChatMessageRequest, ChatMessage as OllamaChatMessage, MessageRole};
 use ollama_rs::history::ChatHistory;
 use ollama_rs::generation::completion::request::GenerationRequest;
 use ollama_rs::models::ModelOptions as OllamaModelOptions;
@@ -404,8 +404,8 @@ impl App {
                 let task = match self.mode {
                     Mode::Chat => {
                         Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
-                            // ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
+                            // stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
+                            ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                 };
@@ -541,6 +541,14 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
             audio: None,
             tool_calls: None,
         },
+    }
+}
+
+fn line_to_ollama(line: &Line) -> OllamaChatMessage {
+    match line.role {
+        Role::User => OllamaChatMessage::new(MessageRole::User, line.content.clone()),
+        Role::Assistant => OllamaChatMessage::new(MessageRole::Assistant, line.content.clone()),
+        Role::System => OllamaChatMessage::new(MessageRole::System, line.content.clone()),
     }
 }
 
@@ -878,7 +886,8 @@ fn ollama_stream_chat(
             .num_ctx(16_384)
             .num_predict(opts.num_predict as i32);
 
-        let mut stream = ollama.generate_stream(GenerationRequest::new(model, user_prompt)
+            /*
+        let mut stream = ollama.generate_stream(GenerationRequest::new(model.clone(), user_prompt.clone())
             .options(options)).await.unwrap();
 
         while let Some(res) = stream.next().await {
@@ -888,8 +897,80 @@ fn ollama_stream_chat(
                 yield Message::LlmChunk(chunk);
             }
         }
-        yield Message::LlmDone; return;
+        // yield Message::LlmDone;
+        // return;
+        */
 
+        let mut ollama_history_vec: Vec<OllamaChatMessage> = {
+            let h = history.lock().unwrap();
+            h.iter().map(line_to_ollama).collect()
+        };
+        let ollama_history = Arc::new(Mutex::new(ollama_history_vec));
+
+        let req = ChatMessageRequest::new(
+            model.clone(),
+            vec![OllamaChatMessage::user(user_prompt.clone())]
+        ).options(options);
+
+        let mut s = match ollama.send_chat_messages_with_history_stream(ollama_history.clone(), req).await {
+            Ok(s) => s,
+            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+        };
+
+        let mut assistant_acc = String::new();
+
+        while let Some(item) = s.next().await {
+            match item {
+                Ok(res) => {
+                    let chunk = res.message.content;
+                    if !chunk.is_empty() {
+                        assistant_acc.push_str(&chunk);
+                        yield Message::LlmChunk(chunk);
+                    }
+                }
+                Err(e) => {
+                    yield Message::LlmErr("err".to_string());
+                    yield Message::LlmDone;
+                    return;
+                }
+            }
+        }
+
+        {
+            let mut h = history.lock().unwrap();
+            h.push(Line { role: Role::User, content: user_prompt });
+            h.push(Line { role: Role::Assistant, content: assistant_acc });
+        }
+
+        {
+            let h = ollama_history.lock().unwrap();
+            println!("--- Ollama history ---");
+            for (i, msg) in h.iter().enumerate() {
+                debug!("[{i}] {:?}: {}", msg.role, msg.content);
+            }
+        }
+
+        yield Message::LlmDone;
+
+        /*
+        // Example from docs.
+        let mut history = vec![];
+        let res = ollama
+            .send_chat_messages_with_history(
+                &mut history,
+                ChatMessageRequest::new(
+                    model,
+                    vec![OllamaChatMessage::user(user_prompt)], // <- You should provide only one message
+                ),
+            )
+            .await;
+        if let Ok(res) = res {
+            println!("{}", res.message.content);
+        }
+        println!("{:?}", history);
+        yield Message::LlmDone;
+        return;
+        */
         /*
         let mut s = match ollama.send_chat_messages_with_history_stream(history, req).await {
             Ok(s) => s,
