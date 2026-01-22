@@ -525,11 +525,9 @@ impl App {
     }
 }
 
-// Function to convert Line to ChatMessage.
-// TODO let history use ChatMessage instead.
+// Function to convert Line to OpenAI compatible ChatMessage.
 fn line_to_chat_message(line: &Line) -> ChatMessage {
     let content = ChatMessageContent::Text(line.content.clone());
-    // println!("{}", content);
     match line.role {
         Role::User => ChatMessage::User { content, name: None },
         Role::System => ChatMessage::System { content, name: None },
@@ -544,6 +542,7 @@ fn line_to_chat_message(line: &Line) -> ChatMessage {
     }
 }
 
+// Line to OllamaChatMessage so we can feed it into the Ollama API.
 fn line_to_ollama(line: &Line) -> OllamaChatMessage {
     match line.role {
         Role::User => OllamaChatMessage::new(MessageRole::User, line.content.clone()),
@@ -861,18 +860,6 @@ fn ollama_stream_chat(
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
 
-        /*
-        let txt = vec!["Some", "words"];
-        for t in txt {
-            let chunk = t;
-            if !chunk.is_empty() {
-                yield Message::LlmChunk(chunk.to_string());
-                yield Message::LlmChunk(" ".to_string());
-            }
-        }
-        yield Message::LlmDone;
-        */
-        
         // llama3.2:latest
         // 
         let model = "llama3.2:latest".to_string();
@@ -886,10 +873,9 @@ fn ollama_stream_chat(
             .num_ctx(16_384)
             .num_predict(opts.num_predict as i32);
 
-            /*
+        /*
         let mut stream = ollama.generate_stream(GenerationRequest::new(model.clone(), user_prompt.clone())
             .options(options)).await.unwrap();
-
         while let Some(res) = stream.next().await {
             let responses = res.unwrap();
             for resp in responses {
@@ -901,22 +887,32 @@ fn ollama_stream_chat(
         // return;
         */
 
+        // Get the history, convert to Ollama style ChatMessages so the API
+        // accepts them. Needs to be wrapped in an Arc::Mutex.
         let mut ollama_history_vec: Vec<OllamaChatMessage> = {
             let h = history.lock().unwrap();
             h.iter().map(line_to_ollama).collect()
         };
         let ollama_history = Arc::new(Mutex::new(ollama_history_vec));
 
+        // New connection for Ollama.
+        // Only supply the prompt, the rest is taken care of by the send_chat_message_w(...) function.
         let req = ChatMessageRequest::new(
             model.clone(),
             vec![OllamaChatMessage::user(user_prompt.clone())]
         ).options(options);
 
+        // Prepare the streaming function.
         let mut s = match ollama.send_chat_messages_with_history_stream(ollama_history.clone(), req).await {
             Ok(s) => s,
-            Err(e) => { yield Message::LlmErr(e.to_string()); yield Message::LlmDone; return; }
+            Err(e) => {
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone;
+                return;
+            }
         };
 
+        // Collect the reply here.
         let mut assistant_acc = String::new();
 
         while let Some(item) = s.next().await {
@@ -928,20 +924,22 @@ fn ollama_stream_chat(
                         yield Message::LlmChunk(chunk);
                     }
                 }
-                Err(e) => {
-                    yield Message::LlmErr("err".to_string());
+                Err(_e) => {
+                    yield Message::LlmErr("Error streaming Ollama".to_string());
                     yield Message::LlmDone;
                     return;
                 }
             }
         }
 
+        // Update history with the question and answer. See oai function.
         {
             let mut h = history.lock().unwrap();
             h.push(Line { role: Role::User, content: user_prompt });
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
+        // Debugging.
         {
             let h = ollama_history.lock().unwrap();
             println!("--- Ollama history ---");
