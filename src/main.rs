@@ -876,6 +876,7 @@ fn ollama_stream_chat(
     config: AppConfig,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
+        info!("Q: {}", user_prompt);
 
         // llama3.2:latest
         // 
@@ -889,6 +890,75 @@ fn ollama_stream_chat(
             .top_p(0.25) // from default 0.9
             .num_ctx(16_384)
             .num_predict(opts.num_predict as i32);
+
+
+        // No moderation in Ollama.
+
+        let mut context = format!("Question:{}\n{}", &user_prompt, "Use the following info to answer the question, if there is none, use your own knowledge.\n");
+        
+        if config.max_context > 0 {
+            debug!("Searching for context.");
+
+            // Insert Db/RAG here?) //
+            let table_name = config.table_name;
+            let db: lancedb::Connection = {
+                let guard = config.db_connexion.lock().unwrap();
+                guard.clone().take().expect("Expected a database connection!")
+            };
+
+            let q = {
+                let mut e = config.embedder.lock().unwrap();
+                e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
+            };
+            let qv = &q[0];
+
+            // We need two variables for retrieval limit and for inclusion limit (after the
+            // reranker. 
+            // Should the first limit be twice the CTX slider, just to get some extra?
+            // or should we always retrieve "many"?
+
+            if let Ok(ref table) = db.open_table(&table_name).execute().await {
+                let results_v: Vec<RecordBatch> = table
+                    .query()
+                    .nearest_to(qv.as_slice()).expect("err")
+                    .limit(config.max_context as usize)
+                    .refine_factor(4) // I pulled this number out of my hat.
+                    .execute()
+                    .await.expect("err")
+                    .try_collect()
+                    .await.expect("err");
+                for b in &results_v {
+                    let astractidx = b.schema().index_of("abstract").expect("err");
+                    let text_idx = b.schema().index_of("text").expect("err");
+                    let dist_idx = b.schema().index_of("_distance").expect("err");
+
+                    let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+                    let (retrieved, min_dist, max_dist) =
+                        (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    
+                            let dist = dists.value(i);
+                            let astract = abstracts.value(i);
+                            let text = texts.value(i);
+
+                            let min_d = min_d.min(dist);
+                            let max_d = max_d.max(dist);
+
+                            if dist < config.cut_off {
+                                debug!("{dist:.3} * {astract}: {text}");
+                                context += text;
+                                (cnt + 1, min_d, max_d)
+                            } else {
+                                debug!("{dist:.3}   {astract}: {text}");
+                                (cnt, min_d, max_d)
+                            }
+                        });
+                    info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
+                } // for
+            };
+        } // max_context > 0
 
         /*
         let mut stream = ollama.generate_stream(GenerationRequest::new(model.clone(), user_prompt.clone())
@@ -916,7 +986,7 @@ fn ollama_stream_chat(
         // Only supply the prompt, the rest is taken care of by the send_chat_message_w(...) function.
         let req = ChatMessageRequest::new(
             model.clone(),
-            vec![OllamaChatMessage::user(user_prompt.clone())]
+            vec![OllamaChatMessage::user(context.clone())] //user_prompt.clone())]
         ).options(options);
 
         // Prepare the streaming function.
@@ -952,7 +1022,7 @@ fn ollama_stream_chat(
         // Update history with the question and answer. See oai function.
         {
             let mut h = history.lock().unwrap();
-            h.push(Line { role: Role::User, content: user_prompt });
+            h.push(Line { role: Role::User, content: user_prompt}); // Note, prompt w/o context.
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
