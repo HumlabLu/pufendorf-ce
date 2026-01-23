@@ -885,7 +885,8 @@ fn ollama_stream_chat(
         let ollama = Ollama::default();
         let options = OllamaModelOptions::default()
             .temperature(opts.temperature)
-            .repeat_penalty(1.5) // from default 1.1
+            .repeat_penalty(2.) // from default 1.1
+            .repeat_last_n(-1)
             .top_k(25) // from default 40
             .top_p(0.25) // from default 0.9
             .num_ctx(16_384)
