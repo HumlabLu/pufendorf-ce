@@ -32,9 +32,7 @@ use std::str::FromStr;
 mod lance;
 use lance::{create_database, create_empty_table, append_documents, get_row_count, dump_table};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
-use arrow_array::{
-    RecordBatch, UInt64Array
-};
+use arrow_array::RecordBatch;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 use lancedb::index::scalar::FullTextSearchQuery;use iced::futures::TryStreamExt;
 use lancedb::rerankers::rrf::RRFReranker;
@@ -94,6 +92,9 @@ struct Cli {
 
     #[arg(short, long, help = "Mode, openai or ollama.", default_value = "openai")]
     mode: String,
+
+    #[arg(short = 'M', long, help = "Model name", default_value = "gpt-4.1-nano")]
+    model: String,
 
     #[arg(short, long, help = "System prompt/info json file.")]
     promptfile: Option<String>,
@@ -165,8 +166,12 @@ fn main() -> iced::Result {
         .start().expect("Logging?");
     info!("Start");
 
-    let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
-
+    // Check already here, so we don't run into surprises later on.:w
+    let mode = Mode::from_str(&cli.mode).expect("Unknow mode");
+    if mode == Mode::OpenAI {
+        let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
+    }
+    
     // ------------ New Db stuff
     
     let embedmodel = parse_embedding_model(&cli.embedmodel).expect("Error");
@@ -248,8 +253,8 @@ fn main() -> iced::Result {
         db_path: db_name.clone(),
         table_name: table_name.clone(),
         promptfile: promptfile,
-        model: "gpt-4o-mini".into(),
-        mode: cli.mode,
+        model_str: cli.model.clone(),
+        mode_str: cli.mode,
         fontsize: cli.fontsize,
         cut_off: cli.cutoff,
         max_context: 12,
@@ -301,12 +306,12 @@ impl App {
             }]
         ));
 
-        let mode = Mode::from_str(&config.mode).expect("Unknow mode");
+        let mode = Mode::from_str(&config.mode_str).expect("Unknow mode");
 
         (Self {
             config, 
 
-            model: "gpt-4.1-nano".into(),
+            model: "gpt-4.1-nano".into(), // is in config
             mode: mode,
 
             temperature: 0.1,
@@ -402,7 +407,8 @@ impl App {
                     content: String::new(),
                 });
 
-                let model = self.model.clone();
+                // let model = self.model.clone();
+                let model = self.config.model_str.clone();
                 let opts = ModelOptions::default()
                     .temperature(self.temperature)
                     .num_predict(self.num_predict);
@@ -411,7 +417,6 @@ impl App {
                     Mode::OpenAI => {
                         Task::stream(
                             stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
-                            // ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
                         )
                     }
                     Mode::Ollama => {
@@ -880,7 +885,7 @@ fn ollama_stream_chat(
 
         // llama3.2:latest
         // 
-        let model = "llama3.2:latest".to_string();
+        // let model = "llama3.2:latest".to_string();
         // By default, it will connect to localhost:11434
         let ollama = Ollama::default();
         let options = OllamaModelOptions::default()
@@ -977,7 +982,7 @@ fn ollama_stream_chat(
 
         // Get the history, convert to Ollama style ChatMessages so the API
         // accepts them. Needs to be wrapped in an Arc::Mutex.
-        let mut ollama_history_vec: Vec<OllamaChatMessage> = {
+        let ollama_history_vec: Vec<OllamaChatMessage> = {
             let h = history.lock().unwrap();
             h.iter().map(line_to_ollama).collect()
         };
@@ -1036,52 +1041,6 @@ fn ollama_stream_chat(
         }
 
         yield Message::LlmDone;
-
-        /*
-        // Example from docs.
-        let mut history = vec![];
-        let res = ollama
-            .send_chat_messages_with_history(
-                &mut history,
-                ChatMessageRequest::new(
-                    model,
-                    vec![OllamaChatMessage::user(user_prompt)], // <- You should provide only one message
-                ),
-            )
-            .await;
-        if let Ok(res) = res {
-            println!("{}", res.message.content);
-        }
-        println!("{:?}", history);
-        yield Message::LlmDone;
-        return;
-        */
-        /*
-        let mut s = match ollama.send_chat_messages_with_history_stream(history, req).await {
-            Ok(s) => s,
-            Err(e) => {
-                yield Message::LlmErr(e.to_string());
-                yield Message::LlmDone; return;
-            }
-        };
-
-        while let Some(item) = s.next().await {
-            match item {
-                Ok(res) => {
-                    let chunk = res.message.content;
-                    if !chunk.is_empty() {
-                        yield Message::LlmChunk(chunk);
-                    }
-                }
-                Err(_) => {
-                    yield Message::LlmErr("Ollama stream error".into());
-                    yield Message::LlmDone; return;
-                }
-            }
-        }
-
-        yield Message::LlmDone;
-        */
     }
 }
 

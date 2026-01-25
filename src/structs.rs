@@ -23,7 +23,6 @@ impl ModelOptions {
     }
 }
 
-// Not used yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     OpenAI,
@@ -85,7 +84,7 @@ pub enum Message {
 pub struct App {
     pub config: AppConfig,
 
-    pub model: String,
+    pub model: String, // should be in AppConfig
     pub mode: Mode,
 
     pub temperature: f32,
@@ -107,8 +106,8 @@ pub struct AppConfig {
     pub db_path: String,
     pub table_name: String,
     pub promptfile: String,
-    pub model: String,
-    pub mode: String,
+    pub model_str: String,
+    pub mode_str: String,
     pub fontsize: u32,
     pub cut_off: f32,
     pub max_context: u32,
