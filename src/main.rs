@@ -106,6 +106,10 @@ struct Cli {
 
     #[arg(short, long, help = "Table name.")]
     tablename: Option<String>,
+
+    #[arg(short = 'T', long, help = "Theme.", default_value = "tokyonight")]
+    themestr: String,
+
 }
 
 fn log_format(
@@ -148,6 +152,18 @@ fn _load_font() -> Font {
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
     lancedb::connect(&db_name).execute().await
+}
+
+fn parse_theme(s: &str) -> Theme {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "tokyonight" => Theme::TokyoNight,
+        "gruvboxdark" => Theme::GruvboxDark,
+        "gruvboxlight" => Theme::GruvboxLight,
+        "dark" => Theme::Dark,
+        "lotus" => Theme::KanagawaLotus,
+        "dragon" => Theme::KanagawaDragon,
+        _=> Theme::Light,
+    }
 }
 
 /*
@@ -302,10 +318,10 @@ fn main() -> iced::Result {
         )
         // iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
-        .theme(theme)
+        .theme(parse_theme(&cli.themestr))
         // .settings(Settings::default())
         .settings(Settings {
-            fonts: vec![Cow::Borrowed(include_bytes!("../assets/FiraMono-Medium.ttf"))],
+            fonts: vec![include_bytes!("../assets/FiraMono-Medium.ttf").into()],
             ..Settings::default()
         })
         // .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
@@ -509,13 +525,9 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Font needs to be installed in system!
-        // const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
-        // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
-        // 
-        // 
-        const MY_FONT: iced::Font = Font {
-            family: Family::Name("FiraMono Nerd Font Mono"),
+        // Font needs to be installed in system?
+        const MY_FONT: Font = Font {
+            family: Family::Name("Fira Mono"),
             weight: iced::font::Weight::Medium,
             stretch: iced::font::Stretch::Normal,
             style: iced::font::Style::Normal,
