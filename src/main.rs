@@ -170,6 +170,22 @@ fn main() -> iced::Result {
     let mode = Mode::from_str(&cli.mode).expect("Unknow mode");
     if mode == Mode::OpenAI {
         let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
+        let client = Client::new_from_env(); // or Client::new(api_key);
+        let result = client.models();
+        let rt = Runtime::new().unwrap();
+        let models = rt.block_on(
+            result.list()
+        );
+        // println!("{:?}", models);
+        if let Ok(list) = models {
+            for model in list.data {
+                trace!(
+                    // "ID: {}, Created: {:?}, Object: {}, Owned by: {}",
+                    // model.id, model.created, model.object, model.owned_by
+                    "ID: {}", model.id
+                );
+            }
+        }
     }
     
     // ------------ New Db stuff
@@ -843,6 +859,7 @@ fn stream_chat_oai(
         while let Some(item) = tracked.next().await {
             match item {
                 Ok(chat_response) => {
+                    trace!("{:?}", &chat_response);
                     for choice in &chat_response.choices {
                         if let DeltaChatMessage::Assistant { content: Some(delta), .. } = &choice.delta {
                             let s = delta.to_string();
