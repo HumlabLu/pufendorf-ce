@@ -9,6 +9,9 @@ use iced::{
     widget::{button, column, container, row, scrollable, slider, text, text_input},
     Element, Length, Settings, Task, Theme,
 };
+use iced::widget::Scrollable;
+use iced::{Font, font};
+use iced::font::Family;
 use std::{
     sync::{Arc, LazyLock, Mutex},
 };
@@ -54,6 +57,8 @@ use ollama_rs::generation::chat::{request::ChatMessageRequest, ChatMessage as Ol
 use ollama_rs::history::ChatHistory;
 use ollama_rs::generation::completion::request::GenerationRequest;
 use ollama_rs::models::ModelOptions as OllamaModelOptions;
+
+use std::borrow::Cow;
 
 // LOG is the Id for the chat log output pane, needed in the snap_to(...) function.
 static LOG: LazyLock<Id> = LazyLock::new(|| Id::new("log"));
@@ -131,6 +136,15 @@ fn theme(_: &App) -> Theme {
     // Theme::GruvboxDark // Light
 }
 
+fn _load_font() -> Font {
+    let font_bytes = include_bytes!("../assets/FiraMono-Medium.ttf");
+    Font {
+        family: iced::font::Family::Name("FiraMono"),
+        weight: iced::font::Weight::Normal,
+        stretch: iced::font::Stretch::Normal,
+        style: iced::font::Style::Normal,
+    }
+}
 
 async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
     lancedb::connect(&db_name).execute().await
@@ -264,6 +278,8 @@ fn main() -> iced::Result {
         }
     };
 
+    // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
+
     // Have DB connexion here?
     let config = AppConfig {
         db_path: db_name.clone(),
@@ -287,8 +303,12 @@ fn main() -> iced::Result {
         // iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
         .theme(theme)
-        .settings(Settings::default())
-        .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
+        // .settings(Settings::default())
+        .settings(Settings {
+            fonts: vec![Cow::Borrowed(include_bytes!("../assets/FiraMono-Medium.ttf"))],
+            ..Settings::default()
+        })
+        // .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
         .run()
 }
 
@@ -489,17 +509,43 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
+        // Font needs to be installed in system!
+        // const MY_FONT: iced::Font = iced::Font::with_name("FiraMono Nerd Font Mono");
+        // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
+        // 
+        // 
+        let MY_FONT = Font {
+            family: Family::Name("FiraMono Nerd Font Mono"),
+            ..Font::default()
+        };
         
+        // 
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
                 Role::Assistant => &self.label,
                 Role::System => "",
             };
-            col.push(text(format!("{prefix}{}", line.content)).size(self.config.fontsize).font(MY_FONT).line_height(LineHeight::Relative(1.4)))
+            col.push(text(format!("{prefix}{}", line.content))
+                .size(self.config.fontsize)
+                .font(MY_FONT)
+                .line_height(LineHeight::Relative(1.4))
+            )
         });
 
+        let transcript_scroll = Scrollable::new(
+            container(transcript)
+                .padding(12)
+                .width(Length::Fill)
+        )
+        .height(Length::Fill)
+        .id(LOG.clone());
+
+        let top = container(transcript_scroll)
+            .width(Length::Fill)
+            .height(Length::Fill);
+
+        /*
         let top = container(
             scrollable(container(transcript).padding(12).width(Length::Fill))
                 .id(LOG.clone())
@@ -507,7 +553,8 @@ impl App {
         )
         .width(Length::Fill)
         .height(Length::Fill);
-
+        */
+        
         let controls = row![
             // text("Mode:").font(MY_FONT),
             // pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
