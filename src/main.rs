@@ -514,12 +514,15 @@ impl App {
         // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
         // 
         // 
-        let MY_FONT = Font {
+        const MY_FONT: iced::Font = Font {
             family: Family::Name("FiraMono Nerd Font Mono"),
-            ..Font::default()
+            weight: iced::font::Weight::Medium,
+            stretch: iced::font::Stretch::Normal,
+            style: iced::font::Style::Normal,
         };
+        // println!("{:?}", MY_FONT);
+        // Font { family: Name("FiraMono Nerd Font Mono"), weight: Normal, stretch: Normal, style: Normal }
         
-        // 
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
                 Role::User => "You: ",
