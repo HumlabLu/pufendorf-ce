@@ -162,6 +162,7 @@ fn parse_theme(s: &str) -> Theme {
         "dark" => Theme::Dark,
         "lotus" => Theme::KanagawaLotus,
         "dragon" => Theme::KanagawaDragon,
+        "wave" => Theme::KanagawaWave,
         _=> Theme::Light,
     }
 }
@@ -295,6 +296,15 @@ fn main() -> iced::Result {
     };
 
     // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
+    // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
+    let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
+    let app_font: Font = Font {
+        // family: Family::Name("Fira Mono"),
+        family: Family::Name("Sarasa Mono SC"),
+        weight: iced::font::Weight::Medium,
+        stretch: iced::font::Stretch::Normal,
+        style: iced::font::Style::Normal,
+    };
 
     // Have DB connexion here?
     let config = AppConfig {
@@ -321,7 +331,8 @@ fn main() -> iced::Result {
         .theme(parse_theme(&cli.themestr))
         // .settings(Settings::default())
         .settings(Settings {
-            fonts: vec![include_bytes!("../assets/FiraMono-Medium.ttf").into()],
+            fonts: vec![Cow::Owned(bytes)],
+            // default_font: app_font,
             ..Settings::default()
         })
         // .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
@@ -526,12 +537,22 @@ impl App {
 
     fn view(&self) -> Element<'_, Message> {
         // Font needs to be installed in system?
-        const MY_FONT: Font = Font {
+        const _MY_FONT: Font = Font {
             family: Family::Name("Fira Mono"),
             weight: iced::font::Weight::Medium,
             stretch: iced::font::Stretch::Normal,
             style: iced::font::Style::Normal,
         };
+        // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
+        // let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
+        const MY_FONT: Font = Font {
+            // family: Family::Name("Fira Mono"),
+            family: Family::Name("Sarasa Mono SC"),
+            weight: iced::font::Weight::Medium,
+            stretch: iced::font::Stretch::Normal,
+            style: iced::font::Style::Normal,
+        };
+
         // println!("{:?}", MY_FONT);
         // Font { family: Name("FiraMono Nerd Font Mono"), weight: Normal, stretch: Normal, style: Normal }
         
