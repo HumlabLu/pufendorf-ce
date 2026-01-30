@@ -295,18 +295,6 @@ fn main() -> iced::Result {
         }
     };
 
-    // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
-    // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
-    let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
-    /*
-    let app_font: Font = Font {
-        // family: Family::Name("Fira Mono"),
-        family: Family::Name("Sarasa Mono SC"),
-        weight: iced::font::Weight::Medium,
-        stretch: iced::font::Stretch::Normal,
-        style: iced::font::Style::Normal,
-    };*/
-
     // Have DB connexion here?
     let config = AppConfig {
         db_path: db_name.clone(),
@@ -322,6 +310,10 @@ fn main() -> iced::Result {
         chunk_size: cli.chunksize,
     };
 
+    // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
+    // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
+    let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
+
     iced::application(
         move || App::new(config.clone()),
         App::update,
@@ -336,7 +328,6 @@ fn main() -> iced::Result {
             // default_font: app_font,
             ..Settings::default()
         })
-        // .font(include_bytes!("../assets/FiraMono-Medium.ttf").as_slice())
         .run()
 }
 
@@ -588,11 +579,11 @@ impl App {
         let controls = row![
             // text("Mode:").font(MY_FONT),
             // pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
-            text(format!("T: {:.1}", self.temperature)).font(MY_FONT),
+            text(format!("T: {:.1}", self.temperature)), //.font(MY_FONT),
             slider(0.0..=1.2, self.temperature, Message::TemperatureChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
-            text(format!("CO: {:.1}", self.config.cut_off)).font(MY_FONT),
+            text(format!("CO: {:.1}", self.config.cut_off)), //.font(MY_FONT),
             slider(0.0..=4.0, self.config.cut_off, Message::CutOffChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
@@ -600,12 +591,13 @@ impl App {
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::FillPortion(1))
                 .step(12),*/
-            text(format!("Max CTX: {}", self.config.max_context)).font(MY_FONT),
+            text(format!("Max CTX: {}", self.config.max_context)), //.font(MY_FONT),
             slider(0u32..=42u32, self.config.max_context, Message::MaxContextChanged)
                 .width(Length::FillPortion(1))
                 .step(1u32),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
-            button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
+            // button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
+            button(text("Clear")).on_press(Message::ClearAll),
         ]
         .spacing(12).align_y(iced::Alignment::Center).padding(10);
 
