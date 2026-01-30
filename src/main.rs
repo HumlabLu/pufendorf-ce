@@ -298,13 +298,14 @@ fn main() -> iced::Result {
     // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
     // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
     let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
+    /*
     let app_font: Font = Font {
         // family: Family::Name("Fira Mono"),
         family: Family::Name("Sarasa Mono SC"),
         weight: iced::font::Weight::Medium,
         stretch: iced::font::Stretch::Normal,
         style: iced::font::Style::Normal,
-    };
+    };*/
 
     // Have DB connexion here?
     let config = AppConfig {
@@ -536,19 +537,12 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Font needs to be installed in system?
-        const _MY_FONT: Font = Font {
-            family: Family::Name("Fira Mono"),
-            weight: iced::font::Weight::Medium,
-            stretch: iced::font::Stretch::Normal,
-            style: iced::font::Style::Normal,
-        };
-        // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
-        // let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
+        // NB weight needs to be correct!
         const MY_FONT: Font = Font {
             // family: Family::Name("Fira Mono"),
             family: Family::Name("Sarasa Mono SC"),
-            weight: iced::font::Weight::Medium,
+            // weight: iced::font::Weight::Medium,
+            weight: iced::font::Weight::Normal,
             stretch: iced::font::Stretch::Normal,
             style: iced::font::Style::Normal,
         };
