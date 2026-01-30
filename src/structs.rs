@@ -109,6 +109,7 @@ pub struct AppConfig {
     pub model_str: String,
     pub mode_str: String,
     pub fontsize: u32,
+    pub fontname: String,
     pub cut_off: f32,
     pub max_context: u32,
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,

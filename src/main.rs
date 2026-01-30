@@ -95,6 +95,9 @@ struct Cli {
     #[arg(long, help = "Font size.", default_value_t = 18)]
     fontsize: u32,
 
+    #[arg(long, help = "Font name.", default_value = "Fira")]
+    fontname: String,
+
     #[arg(short, long, help = "Mode, openai or ollama.", default_value = "openai")]
     mode: String,
 
@@ -140,13 +143,21 @@ fn theme(_: &App) -> Theme {
     // Theme::GruvboxDark // Light
 }
 
-fn _load_font() -> Font {
-    let font_bytes = include_bytes!("../assets/FiraMono-Medium.ttf");
-    Font {
-        family: iced::font::Family::Name("FiraMono"),
-        weight: iced::font::Weight::Normal,
-        stretch: iced::font::Stretch::Normal,
-        style: iced::font::Style::Normal,
+fn load_font(s: &str) -> Font {
+    match s {
+        "Fira" => Font {
+            family: iced::font::Family::Name("Fira Mono"),
+            weight: iced::font::Weight::Medium,
+            stretch: iced::font::Stretch::Normal,
+            style: iced::font::Style::Normal,
+        },
+        "Sarasa" => Font {
+            family: Family::Name("Sarasa Mono SC"),
+            weight: iced::font::Weight::Normal,
+            stretch: iced::font::Stretch::Normal,
+            style: iced::font::Style::Normal,
+        },
+        _ => Font { ..Default::default() }
     }
 }
 
@@ -295,6 +306,12 @@ fn main() -> iced::Result {
         }
     };
 
+    let bytes = match cli.fontname.as_str() {
+        "Fira" => std::fs::read("assets/FiraMono-Medium.ttf").unwrap(),
+        "Sarasa" => std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap(),
+        _ => panic!("Unknow font specified!")
+    };
+
     // Have DB connexion here?
     let config = AppConfig {
         db_path: db_name.clone(),
@@ -303,6 +320,7 @@ fn main() -> iced::Result {
         model_str: cli.model.clone(),
         mode_str: cli.mode,
         fontsize: cli.fontsize,
+        fontname: cli.fontname,
         cut_off: cli.cutoff,
         max_context: 12,
         db_connexion: Arc::new(Mutex::new(dbc)),
@@ -310,16 +328,11 @@ fn main() -> iced::Result {
         chunk_size: cli.chunksize,
     };
 
-    // const MY_FONT: &[u8] = include_bytes!("../assets/FiraMono-Medium.ttf");
-    // let bytes = std::fs::read("assets/FiraMono-Medium.ttf").unwrap();
-    let bytes = std::fs::read("assets/sarasa-mono-sc-regular.ttf").unwrap();
-
     iced::application(
         move || App::new(config.clone()),
         App::update,
         App::view,
         )
-        // iced::application(App::new, App::update, App::view)
         .title("Speak with Pufendorf")
         .theme(parse_theme(&cli.themestr))
         // .settings(Settings::default())
@@ -529,17 +542,7 @@ impl App {
 
     fn view(&self) -> Element<'_, Message> {
         // NB weight needs to be correct!
-        const MY_FONT: Font = Font {
-            // family: Family::Name("Fira Mono"),
-            family: Family::Name("Sarasa Mono SC"),
-            // weight: iced::font::Weight::Medium,
-            weight: iced::font::Weight::Normal,
-            stretch: iced::font::Stretch::Normal,
-            style: iced::font::Style::Normal,
-        };
-
-        // println!("{:?}", MY_FONT);
-        // Font { family: Name("FiraMono Nerd Font Mono"), weight: Normal, stretch: Normal, style: Normal }
+        let my_font = load_font(&self.config.fontname);
         
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
@@ -549,7 +552,7 @@ impl App {
             };
             col.push(text(format!("{prefix}{}", line.content))
                 .size(self.config.fontsize)
-                .font(MY_FONT)
+                .font(my_font)
                 .line_height(LineHeight::Relative(1.4))
             )
         });
@@ -577,9 +580,8 @@ impl App {
         */
         
         let controls = row![
-            // text("Mode:").font(MY_FONT),
             // pick_list(&MODES[..], Some(self.mode), Message::ModeChanged),
-            text(format!("T: {:.1}", self.temperature)), //.font(MY_FONT),
+            text(format!("T: {:.1}", self.temperature)), //.font(MY_FONT),      
             slider(0.0..=1.2, self.temperature, Message::TemperatureChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
@@ -596,7 +598,6 @@ impl App {
                 .width(Length::FillPortion(1))
                 .step(1u32),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
-            // button(text("Clear").font(MY_FONT)).on_press(Message::ClearAll),
             button(text("Clear")).on_press(Message::ClearAll),
         ]
         .spacing(12).align_y(iced::Alignment::Center).padding(10);
@@ -606,13 +607,13 @@ impl App {
             .on_submit(Message::Submit)
             .padding(10)
             .size(self.config.fontsize)
-            .font(MY_FONT)
+            .font(my_font)
             .width(Length::Fill);
 
         let bottom = container(
             column![
                 controls,
-                row![input, text(if self.waiting { "  thinking…" } else { "" })].spacing(8),
+                row![input, text(if self.waiting { " pondering…" } else { "" })].spacing(8),
             ]
             .spacing(8),
         )
