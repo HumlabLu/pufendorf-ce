@@ -854,11 +854,11 @@ fn stream_chat_oai(
 
             if let Ok(ref table) = db.open_table(&table_name).execute().await {
                 if config.searchmode == SearchMode::Vector || config.searchmode == SearchMode::Both {
-                    info!("Doing vector search.");
+                    debug!("Doing vector search.");
                     results_v = Some(
                         table.query()
                             .nearest_to(qv.as_slice()).expect("err")
-                            .limit(config.max_context as usize)
+                            .limit(2 * config.max_context as usize)
                             .refine_factor(4)
                             .execute().await.expect("err")
                             .try_collect().await.expect("err")
@@ -866,7 +866,7 @@ fn stream_chat_oai(
                 }
 
                 if config.searchmode == SearchMode::FullText || config.searchmode == SearchMode::Both {
-                    info!("Doing full-text search.");
+                    debug!("Doing full-text search.");
                     let fts = FullTextSearchQuery::new(user_prompt.clone())
                         .with_column("abstract".to_string()).expect("err");
 
@@ -880,7 +880,7 @@ fn stream_chat_oai(
 
                 let k_final = config.max_context as usize;
                 let k_candidates = k_final * 2;
-                let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
+                let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates);
 
                 if let Some(batches) = results_v.as_ref() {
                     for b in batches {
@@ -920,6 +920,7 @@ fn stream_chat_oai(
                         let delta = config.cut_off;
                         let top: Vec<(&Candidate, f32)> = rer_score.iter()
                             .take_while(|(_, s)| highest - *s <= delta)
+                            .take(config.max_context as usize)
                             .map(|(i, s)| (&pool[*i], *s))
                             .collect();
 
