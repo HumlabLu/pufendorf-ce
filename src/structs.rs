@@ -137,6 +137,7 @@ pub struct AppConfig {
     pub promptfile: String,
     pub model_str: String,
     pub mode_str: String,
+    pub searchmode: SearchMode,
     pub fontsize: u32,
     pub fontname: String,
     pub cut_off: f32,
