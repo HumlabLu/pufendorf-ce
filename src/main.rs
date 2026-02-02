@@ -101,6 +101,9 @@ struct Cli {
     #[arg(short, long, help = "Mode, openai or ollama.", default_value = "openai")]
     mode: String,
 
+    #[arg(short, long, help = "Search mode, vector, fulltext or both.", default_value = "vector")]
+    searchmode: String,
+
     #[arg(short = 'M', long, help = "Model name", default_value = "gpt-4.1-nano")]
     model: String,
 

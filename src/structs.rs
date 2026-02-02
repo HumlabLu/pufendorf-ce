@@ -48,6 +48,35 @@ impl FromStr for Mode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchMode {
+    Vector,
+    FullText,
+    Both,
+}
+impl fmt::Display for SearchMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SearchMode::Vector => write!(f, "Vector"),
+            SearchMode::FullText => write!(f, "FullText"),
+            SearchMode::Both => write!(f, "Both"),
+        }
+    }
+}
+impl FromStr for SearchMode {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<SearchMode, Self::Err> {
+        match input {
+            "vector" => Ok(SearchMode::Vector),
+            "fulltext" => Ok(SearchMode::FullText),
+            "both" => Ok(SearchMode::Both),
+            _ => Err(input.to_string()),
+        }
+    }
+}
+// Full-text query. (Also for text field?)
+
 #[derive(Debug, Clone)]
 pub enum Role {
     User,
