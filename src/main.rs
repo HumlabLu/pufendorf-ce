@@ -781,7 +781,7 @@ async fn _fuse_and_rerank(
     Ok(rer_score.into_iter().take(k_final).map(|(i, _)| pool[i].clone()).collect())
 }
 
-fn stream_chat_oai(
+fn _stream_chat_oai_full(
     model: String,
     user_prompt: String,
     opts: ModelOptions,
@@ -1292,6 +1292,195 @@ fn ollama_stream_chat(
             for (i, msg) in h.iter().enumerate() {
                 debug!("[{i}] {:?}: {}", msg.role, msg.content);
             }
+        }
+
+        yield Message::LlmDone;
+    }
+}
+
+fn stream_chat_oai(
+    model: String,
+    user_prompt: String,
+    opts: ModelOptions,
+    history: Arc<Mutex<Vec<Line>>>,
+    config: AppConfig,
+) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
+    stream! {
+        let client = Client::new_from_env();
+        info!("Q: {}", user_prompt);
+
+        // Moderation ----
+        let parameters = ModerationParametersBuilder::default()
+                .model(ModerationModel::OmniModerationLatest.to_string())
+                // .input(ModerationInput::Text("I want to kill them.".to_string()))
+                .input(ModerationInput::Array(vec![
+                    user_prompt.clone()
+                ]))
+                .build()
+                .unwrap();
+        let result = client.moderations().create(parameters).await.unwrap();
+        let cats = &result.results[0].category_scores;
+        let _flagged = result.results[0].flagged;
+        
+        // The moderator is very strict, we check scores.
+        let mut flagged = false;
+        let v = serde_json::to_value(&cats).unwrap();
+        if let Value::Object(map) = v {
+            for (k, v) in map {
+                let score = v.as_f64().unwrap();
+                if score > 0.6 {
+                    debug!("{k}: {score}");
+                    flagged = true;
+                }
+            }
+        }
+        
+        if flagged {
+            debug!("Mod: {:?}", cats);
+            yield Message::LlmChunk("Please ask another question!".to_string());
+            yield Message::LlmDone;
+            return;
+        }
+
+        let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
+        
+        if config.max_context > 0 {
+            debug!("Searching for context.");
+
+            // Insert Db/RAG here?) //
+            let table_name = config.table_name;
+            let db: lancedb::Connection = {
+                let guard = config.db_connexion.lock().unwrap();
+                guard.clone().take().expect("Expected a database connection!")
+            };
+
+            let q = {
+                let mut e = config.embedder.lock().unwrap();
+                e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
+            };
+            let qv = &q[0];
+
+            // We need two variables for retrieval limit and for inclusion limit (after the
+            // reranker. 
+            // Should the first limit be twice the CTX slider, just to get some extra?
+            // or should we always retrieve "many"?
+
+            if let Ok(ref table) = db.open_table(&table_name).execute().await {
+                let results_v: Vec<RecordBatch> = table
+                    .query()
+                    .nearest_to(qv.as_slice()).expect("err")
+                    .limit(config.max_context as usize)
+                    .refine_factor(4) // I pulled this number out of my hat.
+                    .execute()
+                    .await.expect("err")
+                    .try_collect()
+                    .await.expect("err");
+                for b in &results_v {
+                    let astractidx = b.schema().index_of("abstract").expect("err");
+                    let text_idx = b.schema().index_of("text").expect("err");
+                    let dist_idx = b.schema().index_of("_distance").expect("err");
+
+                    let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
+                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+
+                    let (retrieved, min_dist, max_dist) =
+                        (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
+                    
+                            let dist = dists.value(i);
+                            let astract = abstracts.value(i);
+                            let text = texts.value(i);
+
+                            let min_d = min_d.min(dist);
+                            let max_d = max_d.max(dist);
+
+                            if dist < config.cut_off {
+                                debug!("{dist:.3} * {astract}: {text}");
+                                context += text;
+                                (cnt + 1, min_d, max_d)
+                            } else {
+                                debug!("{dist:.3}   {astract}: {text}");
+                                (cnt, min_d, max_d)
+                            }
+                        });
+                    info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
+                } // for
+            };
+        } // max_context > 0
+
+        let mut messages: Vec<ChatMessage> = {
+            let h = history.lock().unwrap();
+            h.iter().map(line_to_chat_message).collect()
+        };
+
+        messages.push(ChatMessage::User {
+            content: ChatMessageContent::Text(context),
+            name: None,
+        });
+        
+        messages.push(ChatMessage::User {
+            content: ChatMessageContent::Text(user_prompt.clone()),
+            name: None,
+        });
+        debug!("{:?}", messages);
+
+        let params = match ChatCompletionParametersBuilder::default()
+            .model(model)
+            .messages(messages)
+            .max_tokens(opts.num_predict)
+            .temperature(opts.temperature)
+            .response_format(ChatCompletionResponseFormat::Text)
+            .build()
+        {
+            Ok(p) => p,
+            Err(e) => {
+                // Yield errors to the stream/chat.
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone;
+                return;
+            }
+        };
+
+        let stream0 = match client.chat().create_stream(params).await {
+            Ok(s) => s,
+            Err(e) => {
+                yield Message::LlmErr(e.to_string());
+                yield Message::LlmDone;
+                return;
+            }
+        };
+
+        let mut tracked = RoleTrackingStream::new(stream0);
+        let mut assistant_acc = String::new();
+
+        while let Some(item) = tracked.next().await {
+            match item {
+                Ok(chat_response) => {
+                    trace!("{:?}", &chat_response);
+                    for choice in &chat_response.choices {
+                        if let DeltaChatMessage::Assistant { content: Some(delta), .. } = &choice.delta {
+                            let s = delta.to_string();
+                            if !s.is_empty() {
+                                assistant_acc.push_str(&s);
+                                yield Message::LlmChunk(s);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    yield Message::LlmErr(e.to_string());
+                    yield Message::LlmDone;
+                    return;
+                }
+            }
+        }
+
+        { // Inside a block because we cannot hold the guard.
+            let mut h = history.lock().unwrap();
+            // info!("Q: {}", user_prompt);
+            h.push(Line { role: Role::User, content: user_prompt });
+            info!("A: {}", assistant_acc);
+            h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
         yield Message::LlmDone;
