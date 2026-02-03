@@ -211,7 +211,7 @@ fn main() -> iced::Result {
         .start().expect("Logging?");
     info!("Start");
 
-    // Check already here, so we don't run into surprises later on.:w
+    // Check already here, so we don't run into surprises later on.
     let mode = Mode::from_str(&cli.mode).expect("Unknow mode");
     if mode == Mode::OpenAI {
         let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
