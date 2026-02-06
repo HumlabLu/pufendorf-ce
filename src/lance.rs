@@ -464,3 +464,123 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::TryStreamExt;
+    use lancedb::index::scalar::FullTextSearchQuery;
+    use tokio::runtime::Runtime;
+
+    fn temp_db_path() -> String {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!("lancedb_test_{}", Uuid::now_v7()));
+        std::fs::create_dir_all(&dir).expect("create temp db dir");
+        dir.to_string_lossy().to_string()
+    }
+
+    async fn create_test_table(db_name: &str, table_name: &str) -> Result<lancedb::table::Table> {
+        let db = lancedb::connect(db_name).execute().await?;
+        let dim = 2;
+        let schema = build_schema(dim);
+
+        let ids = Arc::new(StringArray::from_iter_values([
+            Uuid::now_v7().to_string(),
+            Uuid::now_v7().to_string(),
+            Uuid::now_v7().to_string(),
+        ]));
+        let abstracts = Arc::new(StringArray::from_iter_values([
+            "a1".to_string(),
+            "a2".to_string(),
+            "a3".to_string(),
+        ]));
+        let texts = Arc::new(StringArray::from_iter_values([
+            "alpha cat".to_string(),
+            "beta dog".to_string(),
+            "gamma fish".to_string(),
+        ]));
+        let vectors = Arc::new(FixedSizeListArray::from_iter_primitive::<Float32Type, _, _>(
+            [
+                Some(vec![Some(1.0), Some(0.0)]),
+                Some(vec![Some(0.0), Some(1.0)]),
+                Some(vec![Some(0.7), Some(0.7)]),
+            ],
+            dim,
+        ));
+
+        let batch = RecordBatch::try_new(schema.clone(), vec![ids, abstracts, texts, vectors])?;
+        let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
+
+        let t = db
+            .create_table(table_name, Box::new(batches))
+            .mode(CreateTableMode::Overwrite)
+            .execute()
+            .await?;
+
+        t.create_index(&["text"], Index::FTS(Default::default()))
+            .execute()
+            .await?;
+
+        Ok(t)
+    }
+
+    #[test]
+    fn vector_retrieval_returns_expected_row() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let db_name = temp_db_path();
+            let table = create_test_table(&db_name, "docs").await.unwrap();
+            let schema = table.schema().await.unwrap();
+            let text_idx = schema_index(&schema, "text").unwrap();
+
+            let batches: Vec<RecordBatch> = table
+                .query()
+                .nearest_to(&[1.0_f32, 0.0_f32])
+                .expect("nearest_to")
+                .limit(1)
+                .execute()
+                .await
+                .unwrap()
+                .try_collect()
+                .await
+                .unwrap();
+
+            let texts = batches[0]
+                .column(text_idx)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            assert_eq!(texts.value(0), "alpha cat");
+        });
+    }
+
+    #[test]
+    fn full_text_retrieval_returns_expected_row() {
+        let rt = Runtime::new().unwrap();
+        rt.block_on(async {
+            let db_name = temp_db_path();
+            let table = create_test_table(&db_name, "docs").await.unwrap();
+            let schema = table.schema().await.unwrap();
+            let text_idx = schema_index(&schema, "text").unwrap();
+
+            let fts = FullTextSearchQuery::new("beta".to_string());
+            let batches: Vec<RecordBatch> = table
+                .query()
+                .full_text_search(fts)
+                .limit(1)
+                .execute()
+                .await
+                .unwrap()
+                .try_collect()
+                .await
+                .unwrap();
+
+            let texts = batches[0]
+                .column(text_idx)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            assert_eq!(texts.value(0), "beta dog");
+        });
+    }
+}
