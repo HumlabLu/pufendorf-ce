@@ -335,35 +335,31 @@ fn main() -> iced::Result {
 
     let searchmode = SearchMode::from_str(&cli.searchmode).expect("Unknow search mode");
 
-    let app_db_path = db_name.clone();
-    let app_table_name = table_name.clone();
-    let app_promptfile = promptfile;
-    let app_model_str = cli.model.clone();
-    let app_mode_str = cli.mode.clone();
-    let app_searchmode = searchmode;
-    let app_fontsize = cli.fontsize;
-    let app_fontname = cli.fontname.clone();
-    let app_cut_off = cli.cutoff;
-    let app_max_context = 12;
-    let app_db_connexion = Arc::new(Mutex::new(dbc));
-    let app_embedder = Arc::new(Mutex::new(embedder));
-    let app_chunk_size = cli.chunksize;
+    let model_str = cli.model.clone();
+    let mode_str = cli.mode.clone();
+    let fontsize = cli.fontsize;
+    let fontname = cli.fontname.clone();
+    let cut_off = cli.cutoff;
+    let max_context = 12;
+    let db_connexion = Arc::new(Mutex::new(dbc));
+    let embedder = Arc::new(Mutex::new(embedder));
+    let chunk_size = cli.chunksize;
 
     iced::application(
         move || App::new(
-            app_db_path.clone(),
-            app_table_name.clone(),
-            app_promptfile.clone(),
-            app_model_str.clone(),
-            app_mode_str.clone(),
-            app_searchmode,
-            app_fontsize,
-            app_fontname.clone(),
-            app_cut_off,
-            app_max_context,
-            app_db_connexion.clone(),
-            app_embedder.clone(),
-            app_chunk_size,
+            db_name.clone(),
+            table_name.clone(),
+            promptfile.clone(),
+            model_str.clone(),
+            mode_str.clone(),
+            searchmode,
+            fontsize,
+            fontname.clone(),
+            cut_off,
+            max_context,
+            db_connexion.clone(),
+            embedder.clone(),
+            chunk_size,
         ),
         App::update,
         App::view,
