@@ -111,9 +111,20 @@ pub enum Message {
 
 // "Global" data for the iced app.
 pub struct App {
-    pub config: AppConfig,
+    pub db_path: String,
+    pub table_name: String,
+    pub promptfile: String,
+    pub model_str: String,
+    pub mode_str: String,
+    pub searchmode: SearchMode,
+    pub fontsize: u32,
+    pub fontname: String,
+    pub cut_off: f32,
+    pub max_context: u32,
+    pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    pub embedder: Arc<Mutex<TextEmbedding>>,
+    pub chunk_size: usize,
 
-    pub model: String, // should be in AppConfig
     pub mode: Mode,
 
     pub temperature: f32,
@@ -128,23 +139,6 @@ pub struct App {
     pub system_prompt: String,
     pub extra_info: String,
     pub label: String,
-}
-
-#[derive(Clone)]
-pub struct AppConfig {
-    pub db_path: String,
-    pub table_name: String,
-    pub promptfile: String,
-    pub model_str: String,
-    pub mode_str: String,
-    pub searchmode: SearchMode,
-    pub fontsize: u32,
-    pub fontname: String,
-    pub cut_off: f32,
-    pub max_context: u32,
-    pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
-    pub embedder: Arc<Mutex<TextEmbedding>>,
-    pub chunk_size: usize,
 }
 
 #[derive(Clone, Debug)]

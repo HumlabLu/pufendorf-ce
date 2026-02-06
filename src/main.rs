@@ -196,12 +196,6 @@ fn parse_theme(s: &str) -> Theme {
     }
 }
 
-/*
-    We have too many structs -- a struct for the Iced app, and another AppConfig
-    struct to move settings from main to the app.
-
-    The AppConfig should prolly also contain the embedding model and DB connexion.
-*/
 fn main() -> iced::Result {
     let cli = Cli::parse();
 
@@ -341,25 +335,36 @@ fn main() -> iced::Result {
 
     let searchmode = SearchMode::from_str(&cli.searchmode).expect("Unknow search mode");
 
-    // Have DB connexion here?
-    let config = AppConfig {
-        db_path: db_name.clone(),
-        table_name: table_name.clone(),
-        promptfile: promptfile,
-        model_str: cli.model.clone(),
-        mode_str: cli.mode,
-        searchmode: searchmode,
-        fontsize: cli.fontsize,
-        fontname: cli.fontname,
-        cut_off: cli.cutoff,
-        max_context: 12,
-        db_connexion: Arc::new(Mutex::new(dbc)),
-        embedder: Arc::new(Mutex::new(embedder)),
-        chunk_size: cli.chunksize,
-    };
+    let app_db_path = db_name.clone();
+    let app_table_name = table_name.clone();
+    let app_promptfile = promptfile;
+    let app_model_str = cli.model.clone();
+    let app_mode_str = cli.mode.clone();
+    let app_searchmode = searchmode;
+    let app_fontsize = cli.fontsize;
+    let app_fontname = cli.fontname.clone();
+    let app_cut_off = cli.cutoff;
+    let app_max_context = 12;
+    let app_db_connexion = Arc::new(Mutex::new(dbc));
+    let app_embedder = Arc::new(Mutex::new(embedder));
+    let app_chunk_size = cli.chunksize;
 
     iced::application(
-        move || App::new(config.clone()),
+        move || App::new(
+            app_db_path.clone(),
+            app_table_name.clone(),
+            app_promptfile.clone(),
+            app_model_str.clone(),
+            app_mode_str.clone(),
+            app_searchmode,
+            app_fontsize,
+            app_fontname.clone(),
+            app_cut_off,
+            app_max_context,
+            app_db_connexion.clone(),
+            app_embedder.clone(),
+            app_chunk_size,
+        ),
         App::update,
         App::view,
         )
@@ -375,10 +380,24 @@ fn main() -> iced::Result {
 }
 
 impl App {
-    fn new(config: AppConfig) -> (Self, Task<Message>) {
+    fn new(
+        db_path: String,
+        table_name: String,
+        promptfile: String,
+        model_str: String,
+        mode_str: String,
+        searchmode: SearchMode,
+        fontsize: u32,
+        fontname: String,
+        cut_off: f32,
+        max_context: u32,
+        db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+        embedder: Arc<Mutex<TextEmbedding>>,
+        chunk_size: usize,
+    ) -> (Self, Task<Message>) {
         // Read the prompts from a json file.
         // Should contain a system_prompt and extra_info.
-        let file_path = Path::new(&config.promptfile);
+        let file_path = Path::new(&promptfile);
         let content = fs::read_to_string(file_path).expect("no file");
         let data: Value = serde_json::from_str(&content).expect("data");
         let sysprompt = data["system_prompt"]
@@ -404,12 +423,23 @@ impl App {
             }]
         ));
 
-        let mode = Mode::from_str(&config.mode_str).expect("Unknow mode");
+        let mode = Mode::from_str(&mode_str).expect("Unknow mode");
 
         (Self {
-            config, 
+            db_path,
+            table_name,
+            promptfile,
+            model_str,
+            mode_str,
+            searchmode,
+            fontsize,
+            fontname,
+            cut_off,
+            max_context,
+            db_connexion,
+            embedder,
+            chunk_size,
 
-            model: "gpt-4.1-nano".into(), // is in config
             mode: mode,
 
             temperature: 0.1,
@@ -449,12 +479,12 @@ impl App {
             }
 
             Message::CutOffChanged(t) => {
-                self.config.cut_off = t;
+                self.cut_off = t;
                 Task::none()
             }
 
             Message::MaxContextChanged(t) => {
-                self.config.max_context = t;
+                self.max_context = t;
                 Task::none()
             }
 
@@ -506,26 +536,64 @@ impl App {
                 });
 
                 // let model = self.model.clone();
-                let model = self.config.model_str.clone();
+                let model = self.model_str.clone();
                 let opts = ModelOptions::default()
                     .temperature(self.temperature)
                     .num_predict(self.num_predict);
 
+                let table_name = self.table_name.clone();
+                let db_connexion = self.db_connexion.clone();
+                let embedder = self.embedder.clone();
+                let searchmode = self.searchmode;
+                let cut_off = self.cut_off;
+                let max_context = self.max_context;
+
                 let task = match self.mode {
                     Mode::OpenAI => {
-                        if self.config.searchmode == SearchMode::Vector {
+                        if self.searchmode == SearchMode::Vector {
                             Task::stream(
-                                stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
+                                stream_chat_oai(
+                                    model,
+                                    prompt,
+                                    opts,
+                                    self.history.clone(),
+                                    table_name,
+                                    db_connexion,
+                                    embedder,
+                                    cut_off,
+                                    max_context,
+                                )
                             )
                         } else {
                             Task::stream(
-                                stream_chat_oai_full(model, prompt, opts, self.history.clone(), self.config.clone())
+                                stream_chat_oai_full(
+                                    model,
+                                    prompt,
+                                    opts,
+                                    self.history.clone(),
+                                    table_name,
+                                    db_connexion,
+                                    embedder,
+                                    searchmode,
+                                    cut_off,
+                                    max_context,
+                                )
                             )
                         }
                     }
                     Mode::Ollama => {
                         Task::stream(
-                            ollama_stream_chat(model, prompt, opts, self.history.clone(), self.config.clone())
+                            ollama_stream_chat(
+                                model,
+                                prompt,
+                                opts,
+                                self.history.clone(),
+                                table_name,
+                                db_connexion,
+                                embedder,
+                                cut_off,
+                                max_context,
+                            )
                         )
                     }
                 };
@@ -578,7 +646,7 @@ impl App {
 
     fn view(&self) -> Element<'_, Message> {
         // NB weight needs to be correct!
-        let my_font = load_font(&self.config.fontname);
+        let my_font = load_font(&self.fontname);
         
         let transcript = self.lines.iter().fold(column![].spacing(8), |col, line| {
             let prefix = match line.role {
@@ -587,7 +655,7 @@ impl App {
                 Role::System => "",
             };
             col.push(text(format!("{prefix}{}", line.content))
-                .size(self.config.fontsize)
+                .size(self.fontsize)
                 .font(my_font)
                 .line_height(LineHeight::Relative(1.4))
             )
@@ -621,16 +689,16 @@ impl App {
             slider(0.0..=1.2, self.temperature, Message::TemperatureChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
-            text(format!("CO: {:.1}", self.config.cut_off)), //.font(MY_FONT),
-            slider(0.0..=4.0, self.config.cut_off, Message::CutOffChanged)
+            text(format!("CO: {:.1}", self.cut_off)), //.font(MY_FONT),
+            slider(0.0..=4.0, self.cut_off, Message::CutOffChanged)
                 .width(Length::FillPortion(1))
                 .step(0.1),
             /*text(format!("Max tokens: {}", self.num_predict)).font(MY_FONT),
             slider(1..=4096, self.num_predict, Message::NumPredictChanged)
                 .width(Length::FillPortion(1))
                 .step(12),*/
-            text(format!("Max CTX: {}", self.config.max_context)), //.font(MY_FONT),
-            slider(0u32..=42u32, self.config.max_context, Message::MaxContextChanged)
+            text(format!("Max CTX: {}", self.max_context)), //.font(MY_FONT),
+            slider(0u32..=42u32, self.max_context, Message::MaxContextChanged)
                 .width(Length::FillPortion(1))
                 .step(1u32),
             // button(text("Reset").font(MY_FONT)).on_press(Message::ResetParams),
@@ -642,7 +710,7 @@ impl App {
             .on_input(Message::DraftChanged)
             .on_submit(Message::Submit)
             .padding(10)
-            .size(self.config.fontsize)
+            .size(self.fontsize)
             .font(my_font)
             .width(Length::Fill);
 
@@ -816,7 +884,12 @@ fn stream_chat_oai_full(
     user_prompt: String,
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
-    config: AppConfig,
+    table_name: String,
+    db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    embedder: Arc<Mutex<TextEmbedding>>,
+    searchmode: SearchMode,
+    cut_off: f32,
+    max_context: u32,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
@@ -857,18 +930,17 @@ fn stream_chat_oai_full(
 
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
-        if config.max_context > 0 {
+        if max_context > 0 {
             debug!("Searching for context.");
 
             // Insert Db/RAG here?) //
-            let table_name = config.table_name;
             let db: lancedb::Connection = {
-                let guard = config.db_connexion.lock().unwrap();
+                let guard = db_connexion.lock().unwrap();
                 guard.clone().take().expect("Expected a database connection!")
             };
 
             let q = {
-                let mut e = config.embedder.lock().unwrap();
+                let mut e = embedder.lock().unwrap();
                 e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
             };
             let qv = &q[0];
@@ -883,32 +955,32 @@ fn stream_chat_oai_full(
             let mut results_f: Option<Vec<RecordBatch>> = None;
 
             if let Ok(ref table) = db.open_table(&table_name).execute().await {
-                if config.searchmode == SearchMode::Vector || config.searchmode == SearchMode::Both {
+                if searchmode == SearchMode::Vector || searchmode == SearchMode::Both {
                     debug!("Doing vector search.");
                     results_v = Some(
                         table.query()
                             .nearest_to(qv.as_slice()).expect("err")
-                            .limit(2 * config.max_context as usize)
+                            .limit(2 * max_context as usize)
                             .refine_factor(4)
                             .execute().await.expect("err")
                             .try_collect().await.expect("err")
                     );
                 }
 
-                if config.searchmode == SearchMode::FullText || config.searchmode == SearchMode::Both {
+                if searchmode == SearchMode::FullText || searchmode == SearchMode::Both {
                     debug!("Doing full-text search.");
                     let fts = FullTextSearchQuery::new(user_prompt.clone())
                         .with_column("abstract".to_string()).expect("err");
 
                     let stream = table.query()
                         .full_text_search(fts)
-                        .limit(2 * config.max_context as usize)
+                        .limit(2 * max_context as usize)
                         .execute().await.expect("err");
 
                     results_f = Some(stream.try_collect().await.expect("err"));
                 }
 
-                let k_final = config.max_context as usize;
+                let k_final = max_context as usize;
                 let k_candidates = k_final * 2;
                 let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates);
 
@@ -947,10 +1019,10 @@ fn stream_chat_oai_full(
                     info!("Top score {}", highest);
 
                     if highest >= -2.0 {
-                        let delta = config.cut_off;
+                        let delta = cut_off;
                         let top: Vec<(&Candidate, f32)> = rer_score.iter()
                             .take_while(|(_, s)| highest - *s <= delta)
-                            .take(config.max_context as usize)
+                            .take(max_context as usize)
                             .map(|(i, s)| (&pool[*i], *s))
                             .collect();
 
@@ -1051,7 +1123,11 @@ fn ollama_stream_chat(
     user_prompt: String,
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
-    config: AppConfig,
+    table_name: String,
+    db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    embedder: Arc<Mutex<TextEmbedding>>,
+    cut_off: f32,
+    max_context: u32,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         info!("Q: {}", user_prompt);
@@ -1075,18 +1151,17 @@ fn ollama_stream_chat(
 
         let mut context = format!("Question:{}\n{}", &user_prompt, "Use the following info to answer the question, if there is none, use your own knowledge.\n");
         
-        if config.max_context > 0 {
+        if max_context > 0 {
             debug!("Searching for context.");
 
             // Insert Db/RAG here?) //
-            let table_name = config.table_name;
             let db: lancedb::Connection = {
-                let guard = config.db_connexion.lock().unwrap();
+                let guard = db_connexion.lock().unwrap();
                 guard.clone().take().expect("Expected a database connection!")
             };
 
             let q = {
-                let mut e = config.embedder.lock().unwrap();
+                let mut e = embedder.lock().unwrap();
                 e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
             };
             let qv = &q[0];
@@ -1100,7 +1175,7 @@ fn ollama_stream_chat(
                 let results_v: Vec<RecordBatch> = table
                     .query()
                     .nearest_to(qv.as_slice()).expect("err")
-                    .limit(config.max_context as usize)
+                    .limit(max_context as usize)
                     .refine_factor(4) // I pulled this number out of my hat.
                     .execute()
                     .await.expect("err")
@@ -1125,7 +1200,7 @@ fn ollama_stream_chat(
                             let min_d = min_d.min(dist);
                             let max_d = max_d.max(dist);
 
-                            if dist < config.cut_off {
+                            if dist < cut_off {
                                 debug!("{dist:.3} * {astract}: {text}");
                                 context += text;
                                 (cnt + 1, min_d, max_d)
@@ -1146,7 +1221,7 @@ fn ollama_stream_chat(
                         .with_column("text".to_string()).expect("err");
                     let stream = table.query()
                         .full_text_search(fts)
-                        .limit(2 * config.max_context as usize)
+                        .limit(2 * max_context as usize)
                         .execute()
                         .await.expect("err");
 
@@ -1171,7 +1246,7 @@ fn ollama_stream_chat(
                                 let max_d = max_d.max(dist);
 
                                 // Cutoff should be done after the reranker, we take all here.
-                                if true || dist < config.cut_off {
+                                if true || dist < cut_off {
                                     debug!("{dist:.3} * {astract}: {text}");
                                     // context += text;
                                     (cnt + 1, min_d, max_d)
@@ -1183,7 +1258,7 @@ fn ollama_stream_chat(
                         info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
                     } // for
 
-                    let k_final = config.max_context as usize;
+                    let k_final = max_context as usize;
                     let k_candidates = k_final * 2;
                     let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
 
@@ -1224,7 +1299,7 @@ fn ollama_stream_chat(
                         info!("Top count 0");
                         debug!("Probably useless retrieval.");
                     } else {
-                        let delta = config.cut_off; // 1.5; // Fantasy number... larger is more context.
+                        let delta = cut_off; // 1.5; // Fantasy number... larger is more context.
                         debug!("best/delta {}/{}", highest, delta);
                         let top: Vec<(&Candidate, f32)> = rer_score.iter()
                             // .take(k_final) // we don't know if we want all of them...
@@ -1335,7 +1410,11 @@ fn stream_chat_oai(
     user_prompt: String,
     opts: ModelOptions,
     history: Arc<Mutex<Vec<Line>>>,
-    config: AppConfig,
+    table_name: String,
+    db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
+    embedder: Arc<Mutex<TextEmbedding>>,
+    cut_off: f32,
+    max_context: u32,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
     stream! {
         let client = Client::new_from_env();
@@ -1376,18 +1455,17 @@ fn stream_chat_oai(
 
         let mut context = "Use the following info to answer the question, if there is none, use your own knowledge.\n".to_string();
         
-        if config.max_context > 0 {
+        if max_context > 0 {
             debug!("Searching for context.");
 
             // Insert Db/RAG here?) //
-            let table_name = config.table_name;
             let db: lancedb::Connection = {
-                let guard = config.db_connexion.lock().unwrap();
+                let guard = db_connexion.lock().unwrap();
                 guard.clone().take().expect("Expected a database connection!")
             };
 
             let q = {
-                let mut e = config.embedder.lock().unwrap();
+                let mut e = embedder.lock().unwrap();
                 e.embed(vec![&user_prompt], None).expect("Cannot embed query?")
             };
             let qv = &q[0];
@@ -1401,7 +1479,7 @@ fn stream_chat_oai(
                 let results_v: Vec<RecordBatch> = table
                     .query()
                     .nearest_to(qv.as_slice()).expect("err")
-                    .limit(config.max_context as usize)
+                    .limit(max_context as usize)
                     .refine_factor(4) // I pulled this number out of my hat.
                     .execute()
                     .await.expect("err")
@@ -1426,7 +1504,7 @@ fn stream_chat_oai(
                             let min_d = min_d.min(dist);
                             let max_d = max_d.max(dist);
 
-                            if dist < config.cut_off {
+                            if dist < cut_off {
                                 debug!("{dist:.3} * {astract}: {text}");
                                 context += text;
                                 (cnt + 1, min_d, max_d)
