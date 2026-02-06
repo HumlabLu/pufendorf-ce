@@ -205,12 +205,21 @@ fn parse_theme(s: &str) -> Theme {
 fn main() -> iced::Result {
     let cli = Cli::parse();
 
-    // This switches off logging from html5 and other crates.
+    // Always log our crate at debug to file; CLI level only affects screen output.
     let level_filter = LevelFilter::from_str(&cli.log_level).unwrap_or(LevelFilter::Off);
     let log_spec = LogSpecification::builder()
         .module("html5ever", LevelFilter::Off)
-        .module("rusty_puff", level_filter) // Sets our level to the one on the cli.
+        .module("rusty_puff", LevelFilter::Debug)
         .build();
+
+    let duplicate = match level_filter {
+        LevelFilter::Off => Duplicate::None,
+        LevelFilter::Error => Duplicate::Error,
+        LevelFilter::Warn => Duplicate::Warn,
+        LevelFilter::Info => Duplicate::Info,
+        LevelFilter::Debug => Duplicate::Debug,
+        LevelFilter::Trace => Duplicate::Trace,
+    };
 
     let _logger = Logger::with(log_spec)
         .format(log_format)
@@ -221,7 +230,7 @@ fn main() -> iced::Result {
                 .suffix("log"),
         )
         .append()
-        .duplicate_to_stderr(Duplicate::Info) // was ::All
+        .duplicate_to_stderr(duplicate)
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
@@ -504,9 +513,15 @@ impl App {
 
                 let task = match self.mode {
                     Mode::OpenAI => {
-                        Task::stream(
-                            stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
-                        )
+                        if self.config.searchmode == SearchMode::Vector {
+                            Task::stream(
+                                stream_chat_oai(model, prompt, opts, self.history.clone(), self.config.clone())
+                            )
+                        } else {
+                            Task::stream(
+                                stream_chat_oai_full(model, prompt, opts, self.history.clone(), self.config.clone())
+                            )
+                        }
                     }
                     Mode::Ollama => {
                         Task::stream(
@@ -796,7 +811,7 @@ async fn _fuse_and_rerank(
     Ok(rer_score.into_iter().take(k_final).map(|(i, _)| pool[i].clone()).collect())
 }
 
-fn _stream_chat_oai_full(
+fn stream_chat_oai_full(
     model: String,
     user_prompt: String,
     opts: ModelOptions,
