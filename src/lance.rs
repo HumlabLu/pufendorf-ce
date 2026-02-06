@@ -25,6 +25,24 @@ use iced::futures::TryStreamExt;
 
 use crate::embedder::{chunk_file_pdf, chunk_file_prefix_txt, chunk_file_txt};
 use uuid::Uuid;
+use std::collections::HashMap;
+
+fn build_schema(dim: i32) -> Arc<Schema> {
+    Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("abstract", DataType::Utf8, false),
+        Field::new("text", DataType::Utf8, false),
+        Field::new(
+            "vector",
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
+            false,
+        ),
+    ]))
+}
+
+fn schema_index(schema: &Schema, name: &str) -> Result<usize> {
+    schema.index_of(name).map_err(|e| anyhow::anyhow!("Missing column '{name}' in schema: {e}"))
+}
 
 pub async fn get_row_count(db_name: &str, table_name: &str) -> usize {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
@@ -113,19 +131,19 @@ where
     if let Ok(ref table) = db.open_table(table_name).execute().await {
         let schema: Arc<Schema> = table.schema().await.expect("No schema?");
         let mut columns: Vec<ArrayRef> = Vec::with_capacity(schema.fields().len());
+        let mut column_map: HashMap<&str, ArrayRef> = HashMap::new();
+        column_map.insert("id", ids);
+        column_map.insert("abstract", abstracts);
+        column_map.insert("text", texts);
+        column_map.insert("vector", vectors);
 
-        columns.push(
-            ids
-        );
-        columns.push(
-            abstracts
-        );
-        columns.push(
-            texts
-        );
-        columns.push(
-            vectors
-        );
+        for field in schema.fields() {
+            if let Some(array) = column_map.get(field.name().as_str()) {
+                columns.push(array.clone());
+            } else {
+                return Err(anyhow::anyhow!("No data provided for column '{}'", field.name()));
+            }
+        }
 
         info!("Preparing batches.");
         let batch = RecordBatch::try_new(schema.clone(), columns)?;
@@ -255,16 +273,7 @@ where
     info!("Embedding dim {}", dim);
 
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Utf8, false),
-        Field::new("abstract", DataType::Utf8, false),
-        Field::new("text", DataType::Utf8, false),
-        Field::new(
-            "vector",
-            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
-            false,
-        ),
-    ]));
+    let schema = build_schema(dim);
 
     info!("Database: {db_name}");
     info!("Table name: {table_name}");
@@ -337,20 +346,9 @@ where
 }
 
 // Creates if not exists.
-pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), anyhow::Error> {
+pub async fn create_empty_table(db_name: &str, table_name: &str, dim: i32) -> Result<(), anyhow::Error> {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");
-    let dim = 384;
-    
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Utf8, false),
-        Field::new("abstract", DataType::Utf8, false),
-        Field::new("text", DataType::Utf8, false),
-        Field::new(
-            "vector",
-            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
-            false,
-        ),
-    ]));
+    let schema = build_schema(dim);
 
     debug!("Database: {db_name}");
     debug!("Table name: {table_name}");
@@ -362,7 +360,7 @@ pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), a
         return Ok(());
     };
 
-    let batch = create_empty_batch();
+    let batch = create_empty_batch(dim);
     let batches = RecordBatchIterator::new(vec![batch].into_iter().map(Ok), schema.clone());
     let _t = db.create_table(table_name, Box::new(batches))
         .execute().await.unwrap();
@@ -370,19 +368,8 @@ pub async fn create_empty_table(db_name: &str, table_name: &str) -> Result<(), a
     Ok(())
 }
 
-fn create_empty_batch() -> RecordBatch {
-    let dim = 384;
-
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("id", DataType::Utf8, false),
-        Field::new("abstract", DataType::Utf8, false),
-        Field::new("text", DataType::Utf8, false),
-        Field::new(
-            "vector",
-            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
-            false,
-        ),
-    ]));
+fn create_empty_batch(dim: i32) -> RecordBatch {
+    let schema = build_schema(dim);
 
     // let id_col = Arc::new(Int32Array::from(Vec::<i32>::new()));
     let id_col = Arc::new(StringArray::from(Vec::<String>::new()));
@@ -415,6 +402,11 @@ fn create_empty_batch() -> RecordBatch {
 pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(), anyhow::Error> {
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB");
     let table = db.open_table(table_name).execute().await.expect("Cannot open table");
+    let schema = table.schema().await.expect("No schema?");
+    let id_idx = schema_index(&schema, "id")?;
+    let abstract_idx = schema_index(&schema, "abstract")?;
+    let text_idx = schema_index(&schema, "text")?;
+    let vector_idx = schema_index(&schema, "vector")?;
 
     let results: Vec<RecordBatch> = table
         .query()
@@ -427,25 +419,25 @@ pub async fn dump_table(db_name: &str, table_name: &str, lim: usize) -> Result<(
     // FIXME use schema, as we do in stream_oai().
     for batch in &results {
         let ids = batch
-            .column(0)
+            .column(id_idx)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
 
         let abstracts = batch
-            .column(1)
+            .column(abstract_idx)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
 
         let texts = batch
-            .column(2)
+            .column(text_idx)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap();
 
         let vectors = batch
-            .column(3)
+            .column(vector_idx)
             .as_any()
             .downcast_ref::<FixedSizeListArray>()
             .unwrap();

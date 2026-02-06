@@ -170,14 +170,29 @@ async fn connect_db(db_name: String) -> lancedb::Result<lancedb::Connection> {
 
 fn parse_theme(s: &str) -> Theme {
     match s.trim().to_ascii_lowercase().as_str() {
-        "tokyonight" => Theme::TokyoNight,
-        "gruvboxdark" => Theme::GruvboxDark,
-        "gruvboxlight" => Theme::GruvboxLight,
+        "light" => Theme::Light,
         "dark" => Theme::Dark,
-        "lotus" => Theme::KanagawaLotus,
-        "dragon" => Theme::KanagawaDragon,
-        "wave" => Theme::KanagawaWave,
-        _=> Theme::Light,
+        "dracula" => Theme::Dracula,
+        "nord" => Theme::Nord,
+        "solarizedlight" => Theme::SolarizedLight,
+        "solarizeddark" => Theme::SolarizedDark,
+        "gruvboxlight" => Theme::GruvboxLight,
+        "gruvboxdark" => Theme::GruvboxDark,
+        "catppuccinlatte" => Theme::CatppuccinLatte,
+        "catppuccinfrappe" => Theme::CatppuccinFrappe,
+        "catppuccinmacchiato" => Theme::CatppuccinMacchiato,
+        "catppuccinmocha" => Theme::CatppuccinMocha,
+        "tokyonight" => Theme::TokyoNight,
+        "tokyonightstorm" => Theme::TokyoNightStorm,
+        "tokyonightlight" => Theme::TokyoNightLight,
+        "kanagawawave" => Theme::KanagawaWave,
+        "kanagawadragon" => Theme::KanagawaDragon,
+        "kanagawalotus" => Theme::KanagawaLotus,
+        "moonfly" => Theme::Moonfly,
+        "nightfly" => Theme::Nightfly,
+        "oxocarbon" => Theme::Oxocarbon,
+        "ferra" => Theme::Ferra,
+        _ => Theme::Light,
     }
 }
 
@@ -291,7 +306,7 @@ fn main() -> iced::Result {
     };
 
     // Create empty table if not exist?
-    let _ = rt.block_on(create_empty_table(&db_name, &table_name));
+    let _ = rt.block_on(create_empty_table(&db_name, &table_name, dim));
     info!("Row count: {}", rt.block_on(get_row_count(&db_name, &table_name)));
     
     if cli.dump > 0 {
@@ -1110,8 +1125,10 @@ fn ollama_stream_chat(
                 // Full-text search.
                 if true {
                     // Full-text query. (Also for text field?)
-                    let fts = FullTextSearchQuery::new(user_prompt.to_string())
-                        .with_column("abstract".to_string()).expect("err");
+                    let fts = FullTextSearchQuery::new_fuzzy(user_prompt.to_string(), None)
+                        // Abstract was good for names in lucris
+                        // .with_column("abstract".to_string()).expect("err");
+                        .with_column("text".to_string()).expect("err");
                     let stream = table.query()
                         .full_text_search(fts)
                         .limit(2 * config.max_context as usize)
@@ -1486,4 +1503,3 @@ fn stream_chat_oai(
         yield Message::LlmDone;
     }
 }
-
