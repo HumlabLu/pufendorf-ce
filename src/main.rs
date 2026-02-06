@@ -1040,6 +1040,13 @@ fn stream_chat_oai_full(
 
                             info!("Top count {}", top.len());
                             for (candidate, s) in top {
+                                context.push_str("\n---\n");
+                                if !candidate.astract.is_empty() {
+                                    context.push_str("Abstract: ");
+                                    context.push_str(&candidate.astract);
+                                    context.push_str("\n");
+                                }
+                                context.push_str("Text: ");
                                 context.push_str(&candidate.text);
                                 debug!("TOP: ({}) {}", s, candidate);
                             }
