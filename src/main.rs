@@ -421,6 +421,11 @@ impl App {
 
         let mode = Mode::from_str(&mode_str).expect("Unknow mode");
 
+        let reranker = Arc::new(Mutex::new(
+            TextRerank::try_new(RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn))
+                .expect("Cannot initialize reranker"),
+        ));
+
         (Self {
             db_path,
             table_name,
@@ -434,6 +439,7 @@ impl App {
             max_context,
             db_connexion,
             embedder,
+            reranker,
             chunk_size,
 
             mode: mode,
@@ -540,6 +546,7 @@ impl App {
                 let table_name = self.table_name.clone();
                 let db_connexion = self.db_connexion.clone();
                 let embedder = self.embedder.clone();
+                let reranker = self.reranker.clone();
                 let searchmode = self.searchmode;
                 let cut_off = self.cut_off;
                 let max_context = self.max_context;
@@ -570,6 +577,7 @@ impl App {
                                     table_name,
                                     db_connexion,
                                     embedder,
+                                    reranker,
                                     searchmode,
                                     cut_off,
                                     max_context,
@@ -883,6 +891,7 @@ fn stream_chat_oai_full(
     table_name: String,
     db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
     embedder: Arc<Mutex<TextEmbedding>>,
+    reranker: Arc<Mutex<TextRerank>>,
     searchmode: SearchMode,
     cut_off: f32,
     max_context: u32,
@@ -965,15 +974,20 @@ fn stream_chat_oai_full(
 
                 if searchmode == SearchMode::FullText || searchmode == SearchMode::Both {
                     debug!("Doing full-text search.");
-                    let fts = FullTextSearchQuery::new(user_prompt.clone())
-                        .with_column("abstract".to_string()).expect("err");
+                    let mut batches: Vec<RecordBatch> = Vec::new();
+                    for col in ["abstract", "text"] {
+                        let fts = FullTextSearchQuery::new(user_prompt.clone())
+                            .with_column(col.to_string()).expect("err");
 
-                    let stream = table.query()
-                        .full_text_search(fts)
-                        .limit(2 * max_context as usize)
-                        .execute().await.expect("err");
+                        let stream = table.query()
+                            .full_text_search(fts)
+                            .limit(2 * max_context as usize)
+                            .execute().await.expect("err");
 
-                    results_f = Some(stream.try_collect().await.expect("err"));
+                        let mut part: Vec<RecordBatch> = stream.try_collect().await.expect("err");
+                        batches.append(&mut part);
+                    }
+                    results_f = Some(batches);
                 }
 
                 let k_final = max_context as usize;
@@ -996,39 +1010,42 @@ fn stream_chat_oai_full(
                 info!("POOL size: {}", pool.len());
 
                 if !pool.is_empty() {
-                    let mut reranker = TextRerank::try_new(
-                        RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn)
-                    ).expect("err");
-
                     let combined: Vec<String> = pool.iter()
                         .map(|c| format!("{}\n{}", c.astract, c.text))
                         .collect();
 
-                    let ranked = reranker
-                        .rerank(user_prompt.clone(), combined.as_slice(), false, None)
-                        .expect("err");
+                    let ranked = {
+                        let mut rr = reranker.lock().unwrap();
+                        rr.rerank(user_prompt.clone(), combined.as_slice(), false, None)
+                    }.expect("err");
 
-                    let mut rer_score: Vec<(usize, f32)> = ranked.into_iter().map(|r| (r.index, r.score)).collect();
-                    rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
-
-                    let highest = rer_score[0].1;
-                    info!("Top score {}", highest);
-
-                    if highest >= -2.0 {
-                        let delta = cut_off;
-                        let top: Vec<(&Candidate, f32)> = rer_score.iter()
-                            .take_while(|(_, s)| highest - *s <= delta)
-                            .take(max_context as usize)
-                            .map(|(i, s)| (&pool[*i], *s))
-                            .collect();
-
-                        info!("Top count {}", top.len());
-                        for (candidate, s) in top {
-                            context.push_str(&candidate.text);
-                            debug!("TOP: ({}) {}", s, candidate);
-                        }
+                    if ranked.is_empty() {
+                        debug!("Empty rerank result; skipping context inclusion.");
                     } else {
-                        debug!("Probably useless retrieval (highest < -2.0)");
+                        let mut rer_score: Vec<(usize, f32)> = ranked.into_iter()
+                            .map(|r| (r.index, r.score))
+                            .collect();
+                        rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+                        let highest = rer_score[0].1;
+                        info!("Top score {}", highest);
+
+                        if highest >= -2.0 {
+                            let delta = cut_off;
+                            let top: Vec<(&Candidate, f32)> = rer_score.iter()
+                                .take_while(|(_, s)| highest - *s <= delta)
+                                .take(max_context as usize)
+                                .map(|(i, s)| (&pool[*i], *s))
+                                .collect();
+
+                            info!("Top count {}", top.len());
+                            for (candidate, s) in top {
+                                context.push_str(&candidate.text);
+                                debug!("TOP: ({}) {}", s, candidate);
+                            }
+                        } else {
+                            debug!("Probably useless retrieval (highest < -2.0)");
+                        }
                     }
                 } else {
                     debug!("Empty pool; skipping rerank.");

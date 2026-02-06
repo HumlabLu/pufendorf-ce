@@ -1,4 +1,4 @@
-use fastembed::TextEmbedding;
+use fastembed::{TextEmbedding, TextRerank};
 use std::str::FromStr;
 use std::{
     fmt,
@@ -123,6 +123,7 @@ pub struct App {
     pub max_context: u32,
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
     pub embedder: Arc<Mutex<TextEmbedding>>,
+    pub reranker: Arc<Mutex<TextRerank>>,
     pub chunk_size: usize,
 
     pub mode: Mode,
