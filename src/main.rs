@@ -232,21 +232,38 @@ fn main() -> iced::Result {
     // Check already here, so we don't run into surprises later on.
     let mode = Mode::from_str(&cli.mode).expect("Unknow mode");
     if mode == Mode::OpenAI {
-        let _oaik = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY");
-        let client = Client::new_from_env(); // or Client::new(api_key);
-        let result = client.models();
-        let rt = Runtime::new().unwrap();
-        let models = rt.block_on(
-            result.list()
-        );
-        // println!("{:?}", models);
-        if let Ok(list) = models {
-            for model in list.data {
-                trace!(
-                    // "ID: {}, Created: {:?}, Object: {}, Owned by: {}",
-                    // model.id, model.created, model.object, model.owned_by
-                    "ID: {}", model.id
+        match env::var("OPENAI_API_KEY") {
+            Ok(s) => {
+                let client = Client::new_from_env(); // or Client::new(api_key);
+                let result = client.models();
+                let rt = Runtime::new().unwrap();
+                let models = rt.block_on(
+                    result.list()
                 );
+                let mut model_present = false;
+                // println!("{:?}", models);
+                if let Ok(list) = models {
+                    for model in list.data {
+                        trace!(
+                            // "ID: {}, Created: {:?}, Object: {}, Owned by: {}",
+                            // model.id, model.created, model.object, model.owned_by
+                            "ID: {}", model.id
+                        );
+                        // info!("{}", model.id);
+                        if cli.model == model.id {
+                            info!("Requested model {} present.", model.id);
+                            model_present = true;
+                        }
+                    }
+                }
+                if !model_present {
+                    error!("Requested model {} not found. Exiting program!", cli.model);
+                    return Ok(());
+                }
+            }   
+            _ => {
+                error!("OPENAI_API_KEY not set. Exiting program!");
+                return Ok(());
             }
         }
     }
