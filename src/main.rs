@@ -381,7 +381,7 @@ fn main() -> iced::Result {
         App::update,
         App::view,
         )
-        .title("Speak with Pufendorf")
+        .title("Samuel von Pufendorf")
         .theme(parse_theme(&cli.themestr))
         // .settings(Settings::default())
         .settings(Settings {
