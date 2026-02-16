@@ -203,7 +203,7 @@ fn main() -> iced::Result {
     let level_filter = LevelFilter::from_str(&cli.log_level).unwrap_or(LevelFilter::Off);
     let log_spec = LogSpecification::builder()
         .module("html5ever", LevelFilter::Off)
-        .module("rusty_puff", LevelFilter::Debug)
+        .module("rusty_puff", LevelFilter::Debug) // Always debug in file.
         .build();
 
     let duplicate = match level_filter {
@@ -224,16 +224,16 @@ fn main() -> iced::Result {
                 .suffix("log"),
         )
         .append()
-        .duplicate_to_stderr(duplicate)
+        .duplicate_to_stderr(duplicate) // hm, not correct because always dbg?
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
-
+    
     // Check already here, so we don't run into surprises later on.
     let mode = Mode::from_str(&cli.mode).expect("Unknow mode");
     if mode == Mode::OpenAI {
         match env::var("OPENAI_API_KEY") {
-            Ok(s) => {
+            Ok(_) => {
                 let client = Client::new_from_env(); // or Client::new(api_key);
                 let result = client.models();
                 let rt = Runtime::new().unwrap();
