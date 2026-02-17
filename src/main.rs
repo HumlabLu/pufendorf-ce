@@ -203,7 +203,7 @@ fn main() -> iced::Result {
     let level_filter = LevelFilter::from_str(&cli.log_level).unwrap_or(LevelFilter::Off);
     let log_spec = LogSpecification::builder()
         .module("html5ever", LevelFilter::Off)
-        .module("rusty_puff", LevelFilter::Debug) // Always debug in file.
+        .module("pufendorf_ce", LevelFilter::Debug) // Always debug in file.
         .build();
 
     let duplicate = match level_filter {
@@ -240,22 +240,12 @@ fn main() -> iced::Result {
                 let models = rt.block_on(
                     result.list()
                 );
-                let mut model_present = false;
-                // println!("{:?}", models);
-                if let Ok(list) = models {
-                    for model in list.data {
-                        trace!(
-                            // "ID: {}, Created: {:?}, Object: {}, Owned by: {}",
-                            // model.id, model.created, model.object, model.owned_by
-                            "ID: {}", model.id
-                        );
-                        // info!("{}", model.id);
-                        if cli.model == model.id {
-                            info!("Requested model {} present.", model.id);
-                            model_present = true;
-                        }
-                    }
-                }
+                let model_present = models.ok().into_iter().flat_map(|list| list.data).any(|model| {
+                    trace!("ID: {}", model.id);
+                    // "ID: {}, Created: {:?}, Object: {}, Owned by: {}",
+                    // model.id, model.created, model.object, model.owned_by
+                    cli.model == model.id
+                });
                 if !model_present {
                     error!("Requested model {} not found. Exiting program!", cli.model);
                     return Ok(());
