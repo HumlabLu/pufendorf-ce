@@ -9,7 +9,9 @@ Speak with Samuel von Pufendorf. Simple GUI which streams OpenAI output into a t
 
 The database can be created with simple tab-separated text data. The first item is meta information (book, chapter, page, etc), and the second item is the data that will be stored as a vector for retrieval.
 
-Here is an example line from the biographical data, from the point of view of Samuel himself. The files are availabl in the `assets`folder.
+The default database name is `data/lancedb_fastembed`, but can be changed with the `-d` option. The default table name is `docs`, which can be changed with the `-t` option.
+
+Here is an example line from the biographical data, from the point of view of Samuel himself. The files are available in the `assets`folder.
 ```shell
 BOOK EXTRA/CHAPTER STANFORD/Encyclopedia         2. Known as a philosopher and a jurist, you were also a respected historian whose accounts of various European states exemplified his basic philosophical concepts. You wrote notably on church-state relations, on intellectual and religious toleration, and on the Baconian theme of innovation in philosophy.
 ```
@@ -23,10 +25,8 @@ cargo run --release -- -t info -f information.txt
 
 When you already have a database, information can be appended like this.
 ```shell
-cargo run --release -- -a new_facts.txt -t info
+cargo run --release -- -t info -a new_facts.txt 
 ```
-
-The default database name is `data/lancedb_fastembed`, but can be changed with the `-d`option.
 
 ## Running the Chatbot
 
@@ -34,6 +34,13 @@ Start as follows. You need an OpenAI API key, which you need to export first, an
 ```shell
 export OPENAI_API_KEY='sk-...´
 cargo run --release
+```
+
+It is also possible to use Ollama instead of OpenAI, but this feature is still experimental. Specify `-m ollama` to change to ollama, and specify the local model with `-M`. This also assumes that Ollama is running locally on the default port.
+
+Example.
+```shell
+cargo run --release -- -m ollama -M "llama3.2:latest"
 ```
 
 ### Log File
