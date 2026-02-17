@@ -43,7 +43,11 @@ Example.
 cargo run --release -- -m ollama -M "llama3.2:latest"
 ```
 
-### Log File
+## Vector and Full-Text Retrieval
+
+The `-s` option selects between vector, full-text or both database retrieval methods. The default is vector only. The Ollama mode always uses both. When both are selected, context is retrieved using both vector and full-text searches. The results are combined with a re-ranker. 
+
+## Log File
 
 The system creates a file called `pufenbot.log`. You can increase the information logged by specifying a log level with the `-l`option as follows.
 ```shell
@@ -54,6 +58,30 @@ cargo run --release -- -l debug
 
 Simple RAG system using the OpenAI API. Uses a `lancedb` vector and BM25 database.
 
+```shell
+Usage: pufendorf-ce [OPTIONS]
+
+Options:
+  -l, --log-level <LOG_LEVEL>    Sets the level of logging; error, warn, info, debug, or trace [default: info]
+  -a, --append <APPEND>          Append text file with info.
+      --chunksize <CHUNKSIZE>    Chunk size. [default: 4096]
+  -c, --cutoff <CUTOFF>          Retrieval cut off. [default: 1.5]
+  -d, --dbname <DBNAME>          DB name.
+  -e, --embedmodel <EMBEDMODEL>  Embedding model. [default: all-minilm-l6-v2]
+      --dump <DUMP>              Dump DB contents. [default: 0]
+  -f, --filename <FILENAME>      Text file with info.
+      --fontsize <FONTSIZE>      Font size. [default: 18]
+      --fontname <FONTNAME>      Font name. [default: Fira]
+  -m, --mode <MODE>              Mode, openai or ollama. [default: openai]
+  -s, --searchmode <SEARCHMODE>  Search mode, vector, fulltext or both. [default: vector]
+  -M, --model <MODEL>            Model name [default: gpt-4.1-nano]
+  -p, --promptfile <PROMPTFILE>  System prompt/info json file.
+  -t, --tablename <TABLENAME>    Table name.
+  -T, --themestr <THEMESTR>      Theme. [default: tokyonight]
+  -h, --help                     Print help (see more with '--help')
+  -V, --version                  Print version
+```
+  
 ## Dumping the DB
 
 Command-line output.
