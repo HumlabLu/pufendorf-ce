@@ -70,6 +70,7 @@ impl FromStr for SearchMode {
         match input {
             "vector" => Ok(SearchMode::Vector),
             "fulltext" => Ok(SearchMode::FullText),
+            "fts" => Ok(SearchMode::FullText),
             "both" => Ok(SearchMode::Both),
             _ => Err(input.to_string()),
         }
