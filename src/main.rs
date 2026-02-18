@@ -211,7 +211,7 @@ fn main() -> iced::Result {
         LevelFilter::Trace => Duplicate::Debug,
     };
 
-    // Fils is at least Info.
+    // File is at least Info.
     let level_filter = if level_filter < LevelFilter::Info {
         LevelFilter::Info
     } else {
@@ -232,7 +232,7 @@ fn main() -> iced::Result {
                 .suffix("log"),
         )
         .append()
-        .duplicate_to_stderr(stderr_level_filter) // hm, not correct because always dbg?
+        .duplicate_to_stderr(stderr_level_filter)
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
