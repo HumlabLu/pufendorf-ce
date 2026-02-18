@@ -211,9 +211,9 @@ fn main() -> iced::Result {
         LevelFilter::Trace => Duplicate::Debug,
     };
 
-    // File is at least Info.
-    let level_filter = if level_filter < LevelFilter::Info {
-        LevelFilter::Info
+    // File is at least Debug.
+    let level_filter = if level_filter < LevelFilter::Debug {
+        LevelFilter::Debug
     } else {
         level_filter
     };
@@ -1383,6 +1383,7 @@ fn ollama_stream_chat(
         {
             let mut h = history.lock().unwrap();
             h.push(Line { role: Role::User, content: user_prompt}); // Note, prompt w/o context.
+            info!("A: {}", assistant_acc);
             h.push(Line { role: Role::Assistant, content: assistant_acc });
         }
 
