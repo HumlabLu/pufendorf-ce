@@ -1179,11 +1179,11 @@ fn ollama_stream_chat(
         let ollama = Ollama::default();
         let options = OllamaModelOptions::default()
             .temperature(opts.temperature)
-            .repeat_penalty(2.) // from default 1.1
+            .repeat_penalty(1.9) // from default 1.1
             .repeat_last_n(-1)
             .top_k(25) // from default 40
-            .top_p(0.25) // from default 0.9
-            .num_ctx(16_384)
+            .top_p(0.45) // from default 0.9
+            .num_ctx(12_384)
             .num_predict(opts.num_predict as i32);
 
 
@@ -1304,7 +1304,7 @@ fn ollama_stream_chat(
                                     context.push_str(&candidate.astract);
                                     context.push_str("\n");
                                 }
-                                context.push_str("Text: ");
+                                context.push_str("Text: "); // FIXME maybe call this FACT? Store in prompt.json?
                                 context.push_str(&candidate.text);
                                 debug!("TOP: ({}) {}", s, candidate);
                             }
@@ -1362,6 +1362,9 @@ fn ollama_stream_chat(
         while let Some(item) = s.next().await {
             match item {
                 Ok(res) => {
+                    if res.done {
+                        continue;
+                    }
                     let chunk = res.message.content;
                     if !chunk.is_empty() {
                         assistant_acc.push_str(&chunk);

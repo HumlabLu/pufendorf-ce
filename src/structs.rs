@@ -78,7 +78,7 @@ impl FromStr for SearchMode {
 }
 // Full-text query. (Also for text field?)
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Role {
     User,
     Assistant,
