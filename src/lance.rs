@@ -334,11 +334,9 @@ where
     }
 
     // BM25indexer
-    /*
     t.create_index(&["abstract"], Index::FTS(Default::default()))
         .execute()
         .await?;
-    */
 
     t.create_index(&["text"], Index::FTS(Default::default()))
         .execute()

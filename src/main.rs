@@ -612,6 +612,8 @@ impl App {
                                 table_name,
                                 db_connexion,
                                 embedder,
+                                reranker,
+                                searchmode,
                                 cut_off,
                                 max_context,
                             )
@@ -972,7 +974,6 @@ fn stream_chat_oai_full(
             // Should the first limit be twice the CTX slider, just to get some extra?
             // or should we always retrieve "many"?
 
-
             let mut results_v: Option<Vec<RecordBatch>> = None;
             let mut results_f: Option<Vec<RecordBatch>> = None;
 
@@ -992,7 +993,7 @@ fn stream_chat_oai_full(
                 if searchmode == SearchMode::FullText || searchmode == SearchMode::Both {
                     debug!("Doing full-text search.");
                     let mut batches: Vec<RecordBatch> = Vec::new();
-                    for col in ["abstract", "text"] {
+                    for col in ["abstract", "text"] { // Do we want abstract here? Maybe for lucris data?
                         let fts = FullTextSearchQuery::new(user_prompt.clone())
                             .with_column(col.to_string()).expect("err");
 
@@ -1163,6 +1164,8 @@ fn ollama_stream_chat(
     table_name: String,
     db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
     embedder: Arc<Mutex<TextEmbedding>>,
+    reranker: Arc<Mutex<TextRerank>>,
+    searchmode: SearchMode,
     cut_off: f32,
     max_context: u32,
 ) -> impl tokio_stream::Stream<Item = Message> + Send + 'static {
@@ -1188,6 +1191,9 @@ fn ollama_stream_chat(
 
         let mut context = format!("Question:{}\n{}", &user_prompt, "Use the following info to answer the question, if there is none, use your own knowledge.\n");
         
+        // The vector only search is stull piped through the reranker, this makes
+        // scoring a bit more difficult. For the OpenAI version we have a function
+        // which does vector search w/o the reranker.
         if max_context > 0 {
             debug!("Searching for context.");
 
@@ -1208,162 +1214,109 @@ fn ollama_stream_chat(
             // Should the first limit be twice the CTX slider, just to get some extra?
             // or should we always retrieve "many"?
 
+            let mut results_v: Option<Vec<RecordBatch>> = None;
+            let mut results_f: Option<Vec<RecordBatch>> = None;
+
             if let Ok(ref table) = db.open_table(&table_name).execute().await {
-                let results_v: Vec<RecordBatch> = table
-                    .query()
-                    .nearest_to(qv.as_slice()).expect("err")
-                    .limit(max_context as usize)
-                    .refine_factor(4) // I pulled this number out of my hat.
-                    .execute()
-                    .await.expect("err")
-                    .try_collect()
-                    .await.expect("err");
-                for b in &results_v {
-                    let astractidx = b.schema().index_of("abstract").expect("err");
-                    let text_idx = b.schema().index_of("text").expect("err");
-                    let dist_idx = b.schema().index_of("_distance").expect("err");
+                if searchmode == SearchMode::Vector || searchmode == SearchMode::Both {
+                    debug!("Doing vector search.");
+                    results_v = Some(
+                        table.query()
+                            .nearest_to(qv.as_slice()).expect("err")
+                            .limit(2 * max_context as usize)
+                            .refine_factor(4)
+                            .execute().await.expect("err")
+                            .try_collect().await.expect("err")
+                    );
+                }
 
-                    let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
-                    let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
-                    let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
+                if searchmode == SearchMode::FullText || searchmode == SearchMode::Both {
+                    debug!("Doing full-text search.");
+                    let mut batches: Vec<RecordBatch> = Vec::new();
+                    for col in ["abstract", "text"] { // Do we want abstract here? Maybe for lucris data?
+                        let fts = FullTextSearchQuery::new(user_prompt.clone())
+                            .with_column(col.to_string()).expect("err");
 
-                    let (retrieved, min_dist, max_dist) =
-                        (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
-                    
-                            let dist = dists.value(i);
-                            let astract = abstracts.value(i);
-                            let text = texts.value(i);
+                        let stream = table.query()
+                            .full_text_search(fts)
+                            .limit(2 * max_context as usize)
+                            .execute().await.expect("err");
 
-                            let min_d = min_d.min(dist);
-                            let max_d = max_d.max(dist);
+                        let mut part: Vec<RecordBatch> = stream.try_collect().await.expect("err");
+                        batches.append(&mut part);
+                    }
+                    results_f = Some(batches);
+                }
 
-                            if dist < cut_off {
-                                debug!("{dist:.3} * {astract}: {text}");
-                                context += text;
-                                (cnt + 1, min_d, max_d)
-                            } else {
-                                debug!("{dist:.3}   {astract}: {text}");
-                                (cnt, min_d, max_d)
-                            }
-                        });
-                    info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
-                } // for
+                let k_final = max_context as usize;
+                let k_candidates = k_final * 2;
+                let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates);
 
-                // Full-text search.
-                if true {
-                    // Full-text query. (Also for text field?)
-                    let fts = FullTextSearchQuery::new_fuzzy(user_prompt.to_string(), None)
-                        // Abstract was good for names in lucris
-                        // .with_column("abstract".to_string()).expect("err");
-                        .with_column("text".to_string()).expect("err");
-                    let stream = table.query()
-                        .full_text_search(fts)
-                        .limit(2 * max_context as usize)
-                        .execute()
-                        .await.expect("err");
-
-                    let results_f: Vec<arrow_array::RecordBatch> = stream.try_collect().await.expect("err");
-                    for b in &results_f {
-                        let astractidx = b.schema().index_of("abstract").expect("err");
-                        let text_idx = b.schema().index_of("text").expect("err");
-                        let dist_idx = b.schema().index_of("_score").expect("err");
-
-                        let abstracts = b.column(astractidx).as_any().downcast_ref::<StringArray>().unwrap();
-                        let texts = b.column(text_idx).as_any().downcast_ref::<StringArray>().unwrap();
-                        let dists = b.column(dist_idx).as_any().downcast_ref::<Float32Array>().unwrap();
-
-                        let (retrieved, min_dist, max_dist) =
-                            (0..b.num_rows()).fold((0usize, f32::MAX, 0f32), |(cnt, min_d, max_d), i| {
-
-                                let dist = dists.value(i);
-                                let astract = abstracts.value(i);
-                                let text = texts.value(i);
-
-                                let min_d = min_d.min(dist);
-                                let max_d = max_d.max(dist);
-
-                                // Cutoff should be done after the reranker, we take all here.
-                                if true || dist < cut_off {
-                                    debug!("{dist:.3} * {astract}: {text}");
-                                    // context += text;
-                                    (cnt + 1, min_d, max_d)
-                                } else {
-                                    debug!("{dist:.3}   {astract}: {text}");
-                                    (cnt, min_d, max_d)
-                                }
-                            });
-                        info!("Retrieved {retrieved} ({:.2}-{:.2}) items.", min_dist, max_dist);
-                    } // for
-
-                    let k_final = max_context as usize;
-                    let k_candidates = k_final * 2;
-                    let mut pool: Vec<Candidate> = Vec::with_capacity(k_candidates * 2);
-
-                    for b in &results_v {
+                if let Some(batches) = results_v.as_ref() {
+                    for b in batches {
                         push_vec_batch(b, &mut pool);
                     }
-                    for b in &results_f {
+                }
+
+                if let Some(batches) = results_f.as_ref() {
+                    for b in batches {
                         push_fts_batch(b, &mut pool);
                     }
-                    let pool = dedupe_by_id(pool);
+                }
 
-                    let mut reranker = TextRerank::try_new(
-                           RerankInitOptions::new(RerankerModel::JINARerankerV1TurboEn)
-                           //BGERerankerV2M3) //BGERerankerBase)
-                        ).expect("err");
+                let pool = dedupe_by_id(pool);
+                info!("POOL size: {}", pool.len());
 
-                    // Combine the abstract and text for reranking.
+                if !pool.is_empty() {
                     let combined: Vec<String> = pool.iter()
                         .map(|c| format!("{}\n{}", c.astract, c.text))
-                        .inspect(|c| trace!("{}", c))
                         .collect();
-                    let ranked = reranker.rerank(user_prompt.clone(), combined.as_slice(), false, None).expect("err");
 
-                    let mut rer_score: Vec<(usize, f32)> =
-                        ranked.into_iter()
+                    let ranked = {
+                        let mut rr = reranker.lock().unwrap();
+                        rr.rerank(user_prompt.clone(), combined.as_slice(), false, None)
+                    }.expect("err");
+
+                    if ranked.is_empty() {
+                        debug!("Empty rerank result; skipping context inclusion.");
+                    } else {
+                        let mut rer_score: Vec<(usize, f32)> = ranked.into_iter()
                             .map(|r| (r.index, r.score))
                             .collect();
+                        rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-                    rer_score.sort_by(|a, b| b.1.total_cmp(&a.1));
+                        let highest = rer_score[0].1;
+                        info!("Top score {}", highest);
 
-                    // rer_scores are (usize, f32) where usize is an index into the pool,
-                    // and the score is, uhm, the score.
-                    let highest= rer_score[0].1;
-                    let last = rer_score[rer_score.len() - 1]; // Should check boundaries.
-                    let lowest = last.1;
-                    info!("Top {} - {}", highest, lowest);
-                    if highest < -2.0 { // FIXME very arbitrary... works for Pufendorf.
-                        info!("Top count 0");
-                        debug!("Probably useless retrieval.");
-                    } else {
-                        let delta = cut_off; // 1.5; // Fantasy number... larger is more context.
-                        debug!("best/delta {}/{}", highest, delta);
-                        let top: Vec<(&Candidate, f32)> = rer_score.iter()
-                            // .take(k_final) // we don't know if we want all of them...
-                            .take_while(|(_, s)| highest - *s <= delta)
-                            .map(|(i, s)| (&pool[*i], *s)) // Index into pool to get &Candidate, plus the score.
-                            .inspect(|r| trace!("{}", r.0)) // r is (&Candidate, f32)
-                            .collect();
+                        if highest >= -2.0 {
+                            let delta = cut_off;
+                            let top: Vec<(&Candidate, f32)> = rer_score.iter()
+                                .take_while(|(_, s)| highest - *s <= delta)
+                                .take(max_context as usize)
+                                .map(|(i, s)| (&pool[*i], *s))
+                                .collect();
 
-                        let (highest, lowest) = if !top.is_empty() {
-                            let highest = top.iter().map(|(_, score)| score).fold(f32::MIN, |a, &b| a.max(b));
-                            let lowest = top.iter().map(|(_, score)| score).fold(f32::MAX, |a, &b| a.min(b));
-                            (highest, lowest)
+                            info!("Top count {}", top.len());
+                            for (candidate, s) in top {
+                                context.push_str("\n---\n");
+                                if !candidate.astract.is_empty() {
+                                    context.push_str("Abstract: ");
+                                    context.push_str(&candidate.astract);
+                                    context.push_str("\n");
+                                }
+                                context.push_str("Text: ");
+                                context.push_str(&candidate.text);
+                                debug!("TOP: ({}) {}", s, candidate);
+                            }
                         } else {
-                            debug!("No elements in top!");
-                            (0.0, 0.0)
-                        };
-
-                        info!("Top count {} ({} - {})", top.len(), highest, lowest);
-                        for (candidate, s) in top {
-                            context += &candidate.text;
-                            debug!("TOP: ({}) {}", s, candidate);
+                            debug!("Probably useless retrieval (highest < -2.0)");
                         }
                     }
-                } // if False
-            };
-        } // max_context > 0
-
+                } else {
+                    debug!("Empty pool; skipping rerank.");
+                }
+            }
+        }
         /*
         let mut stream = ollama.generate_stream(GenerationRequest::new(model.clone(), user_prompt.clone())
             .options(options)).await.unwrap();
