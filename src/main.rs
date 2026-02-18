@@ -201,19 +201,27 @@ fn main() -> iced::Result {
 
     // Always log our crate at debug to file; CLI level only affects screen output.
     let level_filter = LevelFilter::from_str(&cli.log_level).unwrap_or(LevelFilter::Off);
-    let log_spec = LogSpecification::builder()
-        .module("html5ever", LevelFilter::Off)
-        .module("pufendorf_ce", LevelFilter::Debug) // Always debug in file.
-        .build();
-
-    let duplicate = match level_filter {
+    // stderr is max debug.
+    let stderr_level_filter = match level_filter {
         LevelFilter::Off => Duplicate::None,
         LevelFilter::Error => Duplicate::Error,
         LevelFilter::Warn => Duplicate::Warn,
         LevelFilter::Info => Duplicate::Info,
         LevelFilter::Debug => Duplicate::Debug,
-        LevelFilter::Trace => Duplicate::Trace,
+        LevelFilter::Trace => Duplicate::Debug,
     };
+
+    // Fils is at least Info.
+    let level_filter = if level_filter < LevelFilter::Info {
+        LevelFilter::Info
+    } else {
+        level_filter
+    };
+
+    let log_spec = LogSpecification::builder()
+        .module("html5ever", LevelFilter::Off)
+        .module("pufendorf_ce", level_filter)
+        .build();
 
     let _logger = Logger::with(log_spec)
         .format(log_format)
@@ -224,7 +232,7 @@ fn main() -> iced::Result {
                 .suffix("log"),
         )
         .append()
-        .duplicate_to_stderr(duplicate) // hm, not correct because always dbg?
+        .duplicate_to_stderr(stderr_level_filter) // hm, not correct because always dbg?
         .write_mode(WriteMode::BufferAndFlush)
         .start().expect("Logging?");
     info!("Start");
@@ -322,6 +330,8 @@ fn main() -> iced::Result {
     if cli.dump > 0 {
         let rt = Runtime::new().unwrap();
         let _ = rt.block_on(dump_table(&db_name, &table_name, cli.dump));
+        // Exit when dump option is chosen?
+        // return Ok(())
     }
 
     // Alternative way? which is best?
@@ -417,7 +427,7 @@ impl App {
                 sysprompt += extra.as_str().unwrap_or("");
             }
         }
-        debug!("{}", sysprompt);
+        trace!("{}", sysprompt);
 
         let history = Arc::new(Mutex::new(vec![
             Line {
