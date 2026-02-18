@@ -1025,7 +1025,7 @@ fn stream_chat_oai_full(
                 }
 
                 let pool = dedupe_by_id(pool);
-                info!("POOL size: {}", pool.len());
+                debug!("POOL size: {}", pool.len());
 
                 if !pool.is_empty() {
                     let combined: Vec<String> = pool.iter()
@@ -1265,7 +1265,7 @@ fn ollama_stream_chat(
                 }
 
                 let pool = dedupe_by_id(pool);
-                info!("POOL size: {}", pool.len());
+                debug!("POOL size: {}", pool.len());
 
                 if !pool.is_empty() {
                     let combined: Vec<String> = pool.iter()
