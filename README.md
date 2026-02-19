@@ -127,4 +127,4 @@ The output in the debug log is more extensive.
 
 ## Screenshot
 
-![[Screenshot 2026-02-17 at 11.02.53.png]]
+![[assets/Screenshot 2026-02-17 at 11.02.53.png]]
