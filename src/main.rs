@@ -2,7 +2,7 @@ use iced::widget::text::LineHeight;
 use iced::widget::operation::snap_to;
 use iced::widget::scrollable::RelativeOffset;
 use iced::widget::Id;
-use log::{debug, error, info, trace, LevelFilter};
+use log::{debug, error, warn, info, trace, LevelFilter};
 use flexi_logger::{DeferredNow, Record};
 use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
@@ -345,7 +345,12 @@ fn main() -> iced::Result {
 
     let model_str = cli.model.clone();
     let mode_str = cli.mode.clone();
-    let fontsize = cli.fontsize;
+    let fontsize = if cli.fontsize < 4 || cli.fontsize > 128 {
+        warn!("Setting fontsize to 18.");
+        18
+    } else {
+        cli.fontsize
+    };
     let fontname = cli.fontname.clone();
     let cut_off = cli.cutoff;
     let max_context = 12;
