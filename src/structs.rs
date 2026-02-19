@@ -96,7 +96,6 @@ pub enum Message {
     DraftChanged(String),
     Submit,
     ModeChanged(Mode),
-
     TemperatureChanged(f32),
     CutOffChanged(f32),
     MaxContextChanged(u32),

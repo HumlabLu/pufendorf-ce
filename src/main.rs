@@ -6,11 +6,11 @@ use log::{debug, error, info, trace, LevelFilter};
 use flexi_logger::{DeferredNow, Record};
 use flexi_logger::{Duplicate, FileSpec, LogSpecification, Logger, WriteMode};
 use iced::{
-    widget::{button, column, container, row, scrollable, slider, text, text_input},
+    widget::{button, column, container, row, slider, text, text_input},
     Element, Length, Settings, Task, Theme,
 };
 use iced::widget::Scrollable;
-use iced::{Font, font};
+use iced::{Font};
 use iced::font::Family;
 use std::{
     sync::{Arc, LazyLock, Mutex},
@@ -34,11 +34,10 @@ use std::str::FromStr;
 
 mod lance;
 use lance::{create_database, create_empty_table, append_documents, get_row_count, dump_table};
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use fastembed::{InitOptions, TextEmbedding};
 use arrow_array::RecordBatch;
-use lancedb::query::{ExecutableQuery, QueryBase, Select};
+use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::index::scalar::FullTextSearchQuery;use iced::futures::TryStreamExt;
-use lancedb::rerankers::rrf::RRFReranker;
 use arrow_array::{Float32Array, StringArray, Array};
 use tokio::runtime::Runtime;
 
@@ -54,8 +53,6 @@ use fastembed::{TextRerank, RerankInitOptions, RerankerModel};
 
 use ollama_rs::Ollama;
 use ollama_rs::generation::chat::{request::ChatMessageRequest, ChatMessage as OllamaChatMessage, MessageRole};
-use ollama_rs::history::ChatHistory;
-use ollama_rs::generation::completion::request::GenerationRequest;
 use ollama_rs::models::ModelOptions as OllamaModelOptions;
 
 use std::borrow::Cow;
@@ -138,12 +135,6 @@ fn log_format(
         line,
         &record.args()
     )
-}
-
-
-fn theme(_: &App) -> Theme {
-    Theme::TokyoNight //GruvboxLight //Dark
-    // Theme::GruvboxDark // Light
 }
 
 fn load_font(s: &str) -> Font {

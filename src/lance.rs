@@ -11,7 +11,7 @@ use std::fs::File;
 use log::{debug, info, trace, error};
 
 use arrow_array::{
-  ArrayRef, FixedSizeListArray, Int32Array, RecordBatch, RecordBatchIterator, StringArray, Float32Array
+  ArrayRef, FixedSizeListArray, RecordBatch, RecordBatchIterator, StringArray, Float32Array
 };
 use arrow_array::types::Float32Type;
 use arrow_schema::{DataType, Field, Schema};
@@ -106,14 +106,14 @@ where
             }
         };
         info!("New docs {}", new_docs.len());
-        let embeddings = embedder.embed(new_docs.clone(), None)?;
+        let _embeddings = embedder.embed(new_docs.clone(), None)?;
     }
     
     // let (v1, v2) = read_file_to_vecs(&filename);
     let (v1, v2) = chunk_file_prefix_txt(&filename, chunk_size).expect("No file");
     
     let doc_embeddings = embedder.embed(v2.clone(), None).unwrap();
-    let starting_id = 0;
+    let _starting_id = 0;
 
     // let ids = Arc::new(Int32Array::from_iter_values(starting_id..starting_id + v1.len() as i32));
     let ids = Arc::new(StringArray::from_iter_values(
@@ -192,7 +192,7 @@ pub async fn _open_existing_table(db_uri: &str, table_name: &str) -> Result<lanc
     Ok(db.open_table(table_name).execute().await?)
 }
 
-pub fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
+fn _read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
 where
     P: AsRef<Path>,
 {
@@ -209,7 +209,7 @@ where
 {
     debug!("read_file_to_vec(...).");
     let mut docs = Vec::new();
-    if let Ok(lines) = read_lines(&filename) {
+    if let Ok(lines) = _read_lines(&filename) {
         for line in lines {
             if let Ok(content) = line {
                 if content.len() > 12 {
@@ -228,7 +228,7 @@ where
 // Read file prepared by prepare_writings.py.
 // Expected format: meta-info <TAB> info-text
 // The ifo-text is vectorised/searchable.
-pub fn read_file_to_vecs<P>(filename: P) -> (Vec<String>, Vec<String>)
+pub fn _read_file_to_vecs<P>(filename: P) -> (Vec<String>, Vec<String>)
 where
     P: AsRef<Path>,
 {
@@ -236,7 +236,7 @@ where
     let mut col1 = Vec::new();
     let mut col2 = Vec::new();
 
-    if let Ok(lines) = read_lines(&filename) {
+    if let Ok(lines) = _read_lines(&filename) {
         for line in lines {
             if let Ok(content) = line {
                 // Arbitrary limit...
