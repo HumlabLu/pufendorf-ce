@@ -39,6 +39,7 @@ The database can be created with simple tab-separated text data. The first item 
 The default database name is `data/lancedb_fastembed`, but can be changed with the `-d` option. The default table name is `docs`, which can be changed with the `-t` option.
 
 Here is an example line from the biographical data, from the point of view of Samuel himself. The files are available in the `assets`folder.
+
 ```shell
 BOOK EXTRA/CHAPTER STANFORD/Encyclopedia         2. Known as a philosopher and a jurist, you were also a respected historian whose accounts of various European states exemplified his basic philosophical concepts. You wrote notably on church-state relations, on intellectual and religious toleration, and on the Baconian theme of innovation in philosophy.
 ```
@@ -144,6 +145,17 @@ The output in the debug log is more extensive.
 2026-02-17 11:14:26 [DEBUG] lance.rs:467 - abstract=BOOK 1/CHAPTER 1/On Human Action-0-0
 2026-02-17 11:14:26 [DEBUG] lance.rs:468 - text=1. Duty is here defined by me as man's action, duly conformed to the ordinances of the law, and in proportion to obligation. To unde...
 ```
+
+## Build Notes
+
+On a mac, xcode and homebrew are needed to compile the chatbot.
+```shell
+xcode-select --install
+brew install protobuf
+cargo build --release
+```
+
+On an 8GB MacBook Air (Intel, 13-inch, 2020) it takes about 75 minutes to build. It takes 11 minutes on an M1 MacBook Pro (16-inch, 2021).
 
 ## Screenshot
 
