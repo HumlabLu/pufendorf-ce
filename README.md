@@ -20,6 +20,16 @@ Example.
 cargo run --release -- -m ollama -M "llama3.2:latest"
 ```
 
+### Sliders
+
+There are three sliders above the input field, controlling temperature, cutoff point and context size.
+
+ - 'T' controls the temperature. A higher temperature lets the LLM generate more freely, whilst a lower temperature keeps the output more grounded to the question and the retrieved data.
+ - 'CO' controls the cutoff for the retrieved items from the vector database. Each item has a value; a lower value tends to mean the retrieved item is more relevant to the question.
+ - 'Max CTX' controls how many retrieved items will be added to the prompt. 
+
+The 'CO' slider only has effect in the OpenAI plus vector retrieval mode (the default).
+
 ## Prepare a Database
 
 The database can be created with simple tab-separated text data. The first item is meta information (book, chapter, page, etc), and the second item is the data that will be stored as a vector for retrieval.
