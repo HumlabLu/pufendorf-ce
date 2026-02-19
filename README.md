@@ -18,7 +18,7 @@ BOOK EXTRA/CHAPTER STANFORD/Encyclopedia         2. Known as a philosopher and a
 
 The data will be retrieved based on the query and added to the context in the prompt for the LLM.
 
-A new database can be created as follows. The `-t`option specifies the table name.
+A new table with information in the database can be created as follows. The `-t`option specifies the table name.
 ```shell
 cargo run --release -- -t info -f information.txt
 ```
