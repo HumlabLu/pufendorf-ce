@@ -3,7 +3,7 @@
 
 Speak with Samuel von Pufendorf. Simple GUI which streams OpenAI output into a text pane.
 
-The first version of the Pufendorf chatbot was developed for the 'What is lost//What is found' DigiJustice exhibition at the Pufendorf institude in May 2025 (https://www.pi.lu.se/en/themes-0/digijustice-rethinking-digital-inequalities-and-human-rights-age-ai). This version was also displayed at 'Kulturnatten' in September 2025. This version is a complete rewrite in Rust.
+The first version of the Pufendorf chatbot was developed for the 'What is lost//What is found' DigiJustice exhibition at the Pufendorf institude in May 2025 [DigiJustice](https://www.pi.lu.se/en/themes-0/digijustice-rethinking-digital-inequalities-and-human-rights-age-ai). This version was also displayed at 'Kulturnatten' in September 2025. That version is a complete rewrite in Rust.
 
 # Usage
 
