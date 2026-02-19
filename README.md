@@ -127,4 +127,4 @@ The output in the debug log is more extensive.
 
 ## Screenshot
 
-[<img alt="Screenshot" width="240px" src="assets/Screenshot 2026-02-17 at 11.02.53.png" />](Screenshot)
+[<img alt="Screenshot" src="assets/Screenshot 2026-02-17 at 11.02.53.png" />](Screenshot)
