@@ -5,7 +5,22 @@ Speak with Samuel von Pufendorf. Simple GUI which streams OpenAI output into a t
 
 # Usage
 
-## Prepare Database
+## Running the Chatbot
+
+Start as follows. You need an OpenAI API key, which you need to export first, and the database needs to exist (see below).
+```shell
+export OPENAI_API_KEY='sk-...´
+cargo run --release
+```
+
+It is also possible to use Ollama instead of OpenAI, but this feature is still experimental. Specify `-m ollama` to change to ollama, and specify the local model with `-M`. This also assumes that Ollama is running locally on the default port.
+
+Example.
+```shell
+cargo run --release -- -m ollama -M "llama3.2:latest"
+```
+
+## Prepare a Database
 
 The database can be created with simple tab-separated text data. The first item is meta information (book, chapter, page, etc), and the second item is the data that will be stored as a vector for retrieval.
 
@@ -28,30 +43,27 @@ When you already have a database, information can be appended like this.
 cargo run --release -- -t info -a new_facts.txt 
 ```
 
-## Running the Chatbot
-
-Start as follows. You need an OpenAI API key, which you need to export first, and the database needs to exist.
-```shell
-export OPENAI_API_KEY='sk-...´
-cargo run --release
-```
-
-It is also possible to use Ollama instead of OpenAI, but this feature is still experimental. Specify `-m ollama` to change to ollama, and specify the local model with `-M`. This also assumes that Ollama is running locally on the default port.
-
-Example.
-```shell
-cargo run --release -- -m ollama -M "llama3.2:latest"
-```
-
 ## Vector and Full-Text Retrieval
 
-The `-s` option selects between vector, full-text or both database retrieval methods. The default is vector only. The Ollama mode always uses both. When both are selected, context is retrieved using both vector and full-text searches. The results are combined with a re-ranker. 
+The `-s` option selects between vector, full-text or both database retrieval methods. The default is vector only. When both are selected, context is retrieved using both vector and full-text searches. The results are combined with a re-ranker. 
 
 ## Log File
 
 The system creates a file called `pufenbot.log`. You can increase the information logged by specifying a log level with the `-l`option as follows.
 ```shell
 cargo run --release -- -l debug
+```
+
+Without specifying a log-level, some info about the database and the queries and answers are printed to the terminal.
+```shell
+2026-02-19 08:49:02 [INFO] main.rs:229 - Start
+2026-02-19 08:49:02 [INFO] main.rs:273 - Embedding dim 384
+2026-02-19 08:49:02 [INFO] main.rs:282 - Database: data/lancedb_fastembed
+2026-02-19 08:49:02 [INFO] main.rs:288 - Table name: docs
+2026-02-19 08:49:02 [INFO] main.rs:319 - Row count: 467
+2026-02-19 08:49:13 [INFO] main.rs:1406 - Q: Who are you?
+2026-02-19 08:49:14 [INFO] main.rs:1501 - Retrieved 1 (1.47-1.66) items.
+2026-02-19 08:49:16 [INFO] main.rs:1577 - A: I am Samuel Von Pufendorf, a humble servant of learning and jurisprudence, born in Saxony in the year of our Lord 1632. My pursuits have been manifold: I have endeavoured to elucidate the natural law that underpins civil society, to examine the relations between church and state, and to promote the principles of toleration and peace among nations. My writings extend also into the realm of history, wherein I have sought to record the deeds of European states, not merely as chronicles but as reflections of the fundamental philosophical principles that govern human conduct and societal organisation. My work is thus a synthesis of philosophy, law, and history, aimed at fostering understanding and order within the human community.
 ```
 
 # System Description
