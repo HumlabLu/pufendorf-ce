@@ -356,11 +356,8 @@ fn main() -> iced::Result {
     let max_context = 12;
     let db_connexion = Arc::new(Mutex::new(dbc));
     let embedder = Arc::new(Mutex::new(embedder));
-    let chunk_size = cli.chunksize;
-
     iced::application(
         move || App::new(
-            db_name.clone(),
             table_name.clone(),
             promptfile.clone(),
             model_str.clone(),
@@ -372,7 +369,6 @@ fn main() -> iced::Result {
             max_context,
             db_connexion.clone(),
             embedder.clone(),
-            chunk_size,
         ),
         App::update,
         App::view,
@@ -390,7 +386,6 @@ fn main() -> iced::Result {
 
 impl App {
     fn new(
-        db_path: String,
         table_name: String,
         promptfile: String,
         model_str: String,
@@ -402,7 +397,6 @@ impl App {
         max_context: u32,
         db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
         embedder: Arc<Mutex<TextEmbedding>>,
-        chunk_size: usize,
     ) -> (Self, Task<Message>) {
         // Read the prompts from a json file.
         // Should contain a system_prompt and extra_info.
@@ -440,11 +434,8 @@ impl App {
         ));
 
         (Self {
-            db_path,
             table_name,
-            promptfile,
             model_str,
-            mode_str,
             searchmode,
             fontsize,
             fontname,
@@ -453,7 +444,6 @@ impl App {
             db_connexion,
             embedder,
             reranker,
-            chunk_size,
 
             mode: mode,
 
@@ -471,7 +461,6 @@ impl App {
             history,
 
             system_prompt: sysprompt,
-            extra_info: "The year is 1667".into(), // Not used.
             label: label.to_string(),
         }, Task::none())
     }

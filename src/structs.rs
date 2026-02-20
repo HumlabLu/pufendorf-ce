@@ -108,11 +108,8 @@ pub enum Message {
 
 // "Global" data for the iced app.
 pub struct App {
-    pub db_path: String,
     pub table_name: String,
-    pub promptfile: String,
     pub model_str: String,
-    pub mode_str: String,
     pub searchmode: SearchMode,
     pub fontsize: u32,
     pub fontname: String,
@@ -121,7 +118,6 @@ pub struct App {
     pub db_connexion: Arc<Mutex<Option<lancedb::Connection>>>,
     pub embedder: Arc<Mutex<TextEmbedding>>,
     pub reranker: Arc<Mutex<TextRerank>>,
-    pub chunk_size: usize,
 
     pub mode: Mode,
 
@@ -135,7 +131,6 @@ pub struct App {
     pub history: Arc<Mutex<Vec<Line>>>,
 
     pub system_prompt: String,
-    pub extra_info: String,
     pub label: String,
 }
 
