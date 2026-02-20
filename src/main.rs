@@ -483,11 +483,6 @@ impl App {
                 Task::none()
             }
 
-            Message::ModeChanged(m) => {
-                self.mode = m;
-                Task::none()
-            }
-
             Message::TemperatureChanged(t) => {
                 self.temperature = t;
                 Task::none()
@@ -500,17 +495,6 @@ impl App {
 
             Message::MaxContextChanged(t) => {
                 self.max_context = t;
-                Task::none()
-            }
-
-            Message::NumPredictChanged(n) => {
-                self.num_predict = n;
-                Task::none()
-            }
-
-            Message::ResetParams => {
-                self.temperature = 0.1;
-                self.num_predict = 1024;
                 Task::none()
             }
 

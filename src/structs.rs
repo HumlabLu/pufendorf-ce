@@ -95,13 +95,10 @@ pub struct Line {
 pub enum Message {
     DraftChanged(String),
     Submit,
-    ModeChanged(Mode),
     TemperatureChanged(f32),
     CutOffChanged(f32),
     MaxContextChanged(u32),
-    NumPredictChanged(u32),
 
-    ResetParams,
     ClearAll,
 
     LlmChunk(String),

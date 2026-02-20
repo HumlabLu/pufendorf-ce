@@ -149,6 +149,7 @@ The output in the debug log is more extensive.
 ## Build Notes
 
 On a mac, xcode and homebrew are needed to compile the chatbot.
+
 ```shell
 xcode-select --install
 brew install protobuf
