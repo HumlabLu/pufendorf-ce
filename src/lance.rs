@@ -23,7 +23,7 @@ use lancedb::query::{QueryBase, ExecutableQuery};
 
 use iced::futures::TryStreamExt;
 
-use crate::embedder::{chunk_file_pdf, chunk_file_prefix_txt, chunk_file_txt};
+use crate::embedder::{chunk_file_pdf, chunk_file_prefix_txt, chunk_file_txt, get_embedding_dim};
 use uuid::Uuid;
 use std::collections::HashMap;
 
@@ -66,8 +66,7 @@ where
     ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
-    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
-    let dim = model_info.unwrap().dim as i32;
+    let dim = get_embedding_dim(&EmbeddingModel::AllMiniLML6V2)? as i32;
     info!("Embedding dim {}", dim);
 
     // let db_name = config.db_path.clone(); //data/lancedb_fastembed";
@@ -268,8 +267,7 @@ where
     info!("Creating database.");
 
     // Embedder, plus determine dimension.
-    let model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
-    let dim = model_info.unwrap().dim as i32;
+    let dim = get_embedding_dim(&EmbeddingModel::AllMiniLML6V2)? as i32;
     info!("Embedding dim {}", dim);
 
     let db = lancedb::connect(&db_name).execute().await.expect("Cannot connect to DB.");

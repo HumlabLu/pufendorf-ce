@@ -45,7 +45,7 @@ mod structs;
 use structs::*;
 
 mod embedder;
-use embedder::parse_embedding_model;
+use embedder::{get_embedding_dim, parse_embedding_model};
 
 use std::env;
 use std::collections::HashMap;
@@ -268,8 +268,7 @@ fn main() -> iced::Result {
     ).expect("No embedding model.");
 
     // Embedder, plus determine dimension.
-    let model_info = TextEmbedding::get_model_info(&embedmodel);
-    let dim = model_info.unwrap().dim as i32;
+    let dim = get_embedding_dim(&embedmodel).expect("Cannot determine embedding dimension") as i32;
     info!("Embedding dim {}", dim);
 
     let _one_embeddings = embedder.embed(&["one"], None).expect("Cannot embed?");

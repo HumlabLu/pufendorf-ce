@@ -132,9 +132,10 @@ pub fn embeddings<S: AsRef<str> + Send + Sync>(texts: Vec<S>) -> anyhow::Result<
     Ok(embeddings)
 }
 
-pub fn get_embedding_dim() -> anyhow::Result<usize> {
-    let test_model_info = TextEmbedding::get_model_info(&EmbeddingModel::AllMiniLML6V2);
-    Ok(test_model_info.unwrap().dim)
+pub fn get_embedding_dim(model: &EmbeddingModel) -> anyhow::Result<usize> {
+    let model_info = TextEmbedding::get_model_info(model)
+        .map_err(|e| anyhow::anyhow!("Could not get embedding model info for {:?}: {}", model, e))?;
+    Ok(model_info.dim)
 }
 
 // =====================================================================
@@ -147,16 +148,7 @@ pub fn get_embedding_dim() -> anyhow::Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
-
-    fn make_test_path(file_name: &str) -> PathBuf {
-        let project_root = env!("CARGO_MANIFEST_DIR");
-        let data_path = Path::new(project_root)
-            .join("assets")
-            // .join("data")
-            .join(file_name);
-        data_path
-    }
+    use std::fs;
 
     #[test]
     fn chunk_ml100() {
@@ -268,14 +260,23 @@ mod tests {
 
     #[test]
     fn chunk_prefix_file() {
-        let data_path = make_test_path("extras_prepared.txt");
-        let (v1, v2) = chunk_file_prefix_txt(data_path, 128).expect("No file");
+        let test_path = std::env::temp_dir().join(format!(
+            "chunk_prefix_file_{}_{}.txt",
+            std::process::id(),
+            "embedder"
+        ));
+        let content = "BOOK EXTRA/CHAPTER STANFORD/Encyclopedia\tYour approach was secular, non-metaphysical, and anti-authoritarian.\n";
+        fs::write(&test_path, content).expect("cannot write test fixture");
+
+        let (v1, v2) = chunk_file_prefix_txt(&test_path, 128).expect("No file");
+        let _ = fs::remove_file(&test_path);
+
         dbg!("{:?}", &v1);
         dbg!("{:?}", &v2);
-        assert!(v1[1] == "BOOK EXTRA/CHAPTER STANFORD/Encyclopedia-0-1");
-        assert!(
-            v2[1]
-                == "Your approach was secular, non-metaphysical, and anti-authoritarian; it eschewed religious appeals, scholastic"
+        assert_eq!(v1[0], "BOOK EXTRA/CHAPTER STANFORD/Encyclopedia-0-0");
+        assert_eq!(
+            v2[0],
+            "Your approach was secular, non-metaphysical, and anti-authoritarian."
         );
     }
 }
