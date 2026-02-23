@@ -79,6 +79,19 @@ Without specifying a log-level, some info about the database and the queries and
 2026-02-19 08:49:16 [INFO] main.rs:1577 - A: I am Samuel Von Pufendorf, a humble servant of learning and jurisprudence, born in Saxony in the year of our Lord 1632. My pursuits have been manifold: I have endeavoured to elucidate the natural law that underpins civil society, to examine the relations between church and state, and to promote the principles of toleration and peace among nations. My writings extend also into the realm of history, wherein I have sought to record the deeds of European states, not merely as chronicles but as reflections of the fundamental philosophical principles that govern human conduct and societal organisation. My work is thus a synthesis of philosophy, law, and history, aimed at fostering understanding and order within the human community.
 ```
 
+# Prompt
+
+The assets directory contains a file called `chatprompts.json`, containing the base prompt for the system. It also contains a field (an array) for extra hard-coded information. The label is displayed in the text output pane.
+
+Example chatprompts file.
+````json
+{
+  "system_prompt":"You are Samuel Von Pufendorf. Answer in the style of a 17th century academic.",
+  "extra_info":["You were born: January 8, 1632, Dorfchemnitz, near Thalheim, Saxony."],
+  "label":"Samuel: "
+}
+```
+
 # Font and Fontsize
 
 The default font is Fira, but you can choose another font with the `--fontname` option. The size can be changed with the `--fontsize` option.
