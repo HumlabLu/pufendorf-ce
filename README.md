@@ -84,7 +84,7 @@ Without specifying a log-level, some info about the database and the queries and
 The assets directory contains a file called `chatprompts.json`, containing the base prompt for the system. It also contains a field (an array) for extra hard-coded information. The label is displayed in the text output pane.
 
 Example chatprompts file.
-````json
+```json
 {
   "system_prompt":"You are Samuel Von Pufendorf. Answer in the style of a 17th century academic.",
   "extra_info":["You were born: January 8, 1632, Dorfchemnitz, near Thalheim, Saxony."],
